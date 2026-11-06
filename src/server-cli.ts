@@ -152,7 +152,8 @@ export function createServerCli(lifecycle: ReturnType<typeof createServerLifecyc
           const snoozedUntil = parseWake(positionals.until);
           return act(async () => {
             await handlers.snooze({ threadId, snoozedUntil });
-            return `snoozed ${threadId} until ${formatSnoozeWakeTime(snoozedUntil)}`;
+            const starts = lifecycle.readOne(threadId)?.snoozePending ? ", starting when its turn ends" : "";
+            return `snoozed ${threadId} until ${formatSnoozeWakeTime(snoozedUntil)}${starts}`;
           });
         },
       }),
