@@ -20,6 +20,11 @@ export interface ThreadLifecycleRow {
   snoozedUntil: number | null;
   /** When the snooze was set — used to detect activity since. */
   snoozedAt: number | null;
+  /**
+   * The snooze was set during the thread's own turn and starts when that turn
+   * ends, so the turn's final reply does not count as attention since.
+   */
+  snoozePending?: boolean;
 }
 
 /** The activity signals that outrank a user's parking decision. */
@@ -50,7 +55,7 @@ export function resolveWakeReason(
   signals: ThreadActivitySignals,
   now: number,
 ): WakeReason | null {
-  if (row?.snoozedUntil === null || row?.snoozedUntil === undefined) {
+  if (row?.snoozedUntil === null || row?.snoozedUntil === undefined || row.snoozePending) {
     return null;
   }
 
@@ -172,6 +177,8 @@ export function resolveShelf(
   }
 
   if (row.snoozedUntil !== null) {
+    // A snooze that has not started yet hides nothing.
+    if (row.snoozePending) return "active";
     if (resolveWakeReason(row, signals, now) === null) return "snoozed";
     return "active";
   }

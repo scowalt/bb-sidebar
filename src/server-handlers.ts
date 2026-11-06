@@ -13,6 +13,7 @@ import type { createThreadPullRequests } from "./thread-pull-requests";
 import type { createTitleRegenerator } from "./regenerate-title";
 import { SIDEBAR_SETTINGS_CHANNEL, INBOX_ORDER_CHANNEL } from "./contract";
 import { runThreadTasks } from "./thread-tasks";
+import { isTurnInFlight } from "./lifecycle";
 
 const CATALOG_TTL_MS = 5 * 60_000;
 
@@ -38,6 +39,8 @@ export function createServerHandlers(
   const { reclaimThreadResources } = cleanup;
   const { readOne, readAll, withPinParentChange, write, clear, readInboxOrder, replaceInboxOrder, wakeAncestors } =
     lifecycle;
+  const { loadPolicyThread, startPendingSnooze, dropPendingSnooze } = lifecycle;
+  const loadThreadTurn = (threadId: string) => loadPolicyThread(threadId, true).catch(() => undefined);
 
   // Hover cards resolve model names on every open. Share one catalog request
   // per environment and provider for a few minutes instead of refetching.
@@ -213,6 +216,11 @@ export function createServerHandlers(
     },
     async snooze({ threadId, snoozedUntil }) {
       await ctx.bb.sdk.threads.unpin({ threadId });
+      // An agent snoozing its own thread does so mid-turn, and the turn's
+      // final reply would wake the thread at once. Start that snooze when the
+      // turn ends instead.
+      const before = await loadThreadTurn(threadId);
+      const pending = before !== undefined && isTurnInFlight(before.status);
       const now = Date.now();
       write({
         threadId,
@@ -220,7 +228,13 @@ export function createServerHandlers(
         settledOverride: null,
         snoozedUntil,
         snoozedAt: now,
+        snoozePending: pending,
       });
+      // The turn may have ended before the write, too early for its idle or
+      // failed event to find this snooze.
+      const after = pending ? await loadThreadTurn(threadId) : undefined;
+      if (after?.status === "error") dropPendingSnooze(threadId);
+      else if (after && !isTurnInFlight(after.status)) startPendingSnooze(after);
       // A snooze is a parked thread with a return date, and the shortest
       // preset is half an hour. Nobody snoozes a conversation they are in the
       // middle of, so the wake time is not worth keeping a runtime warm for.

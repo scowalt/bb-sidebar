@@ -114,6 +114,7 @@ const migrations = [
    VALUES (1, '', 1, 6, 1, 3, 1)`,
   LIFECYCLE_BACKFILLS_MIGRATION,
   ...INSTALL_DEFAULTS_MIGRATIONS,
+  `ALTER TABLE thread_lifecycle ADD COLUMN snooze_pending INTEGER NOT NULL DEFAULT 0`,
 ];
 
 export default async function plugin(bb: BbPluginApi) {
@@ -149,6 +150,7 @@ export default async function plugin(bb: BbPluginApi) {
   );
   const { resolveProjectIcon } = icons;
   const { wakeAncestors, clearSettlingState, clear, settleUnarchivedTree } = lifecycle;
+  lifecycle.startOrphanedPendingSnoozes();
   ctx.bb.http.route("GET", "/project-icon", async (context) => {
     const projectId = context.req.query("projectId")?.trim();
     const environmentId = context.req.query("environmentId")?.trim() || null;
@@ -194,6 +196,16 @@ export default async function plugin(bb: BbPluginApi) {
   // tree is filed with it rather than waking the tree.
   ctx.bb.events.on("thread.unarchived", async ({ thread }) => {
     await settleUnarchivedTree(thread.id);
+  });
+
+  // A snooze set during the thread's own turn starts once that turn ends,
+  // and releases the runtime the way a snooze of an idle thread does.
+  ctx.bb.events.on("thread.idle", async ({ thread }) => {
+    if (lifecycle.startPendingSnooze(thread)) await cleanup.reclaimThreadResources(thread.id);
+  });
+
+  ctx.bb.events.on("thread.failed", ({ thread }) => {
+    lifecycle.dropPendingSnooze(thread.id);
   });
 
   // A deleted thread must not leave a row behind that would park a future

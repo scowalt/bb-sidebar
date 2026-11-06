@@ -76,6 +76,7 @@ describe("lifecycle RPC", () => {
           settledOverride: "active",
           snoozedUntil: null,
           snoozedAt: null,
+          snoozePending: false,
         },
       ],
     });
