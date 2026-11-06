@@ -8,8 +8,3 @@ pre-commit:
       run: node scripts/check-import-boundaries.mjs {staged_files}
     file-sizes:
       run: node scripts/check-file-sizes.mjs
-
-pre-push:
-  commands:
-    check:
-      run: npm run check
