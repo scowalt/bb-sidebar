@@ -18,6 +18,7 @@ export interface StoredLifecycleRow {
   settledOverride: SettledOverride | null;
   snoozedUntil: number | null;
   snoozedAt: number | null;
+  snoozePending?: boolean;
 }
 interface LifecycleDbRow {
   thread_id: string;
@@ -26,6 +27,7 @@ interface LifecycleDbRow {
   settled_override: SettledOverride | null;
   snoozed_until: number | null;
   snoozed_at: number | null;
+  snooze_pending: number;
 }
 
 export function createServerLifecycle(ctx: ServerContext) {
@@ -34,7 +36,7 @@ export function createServerLifecycle(ctx: ServerContext) {
       ctx.db
         .prepare(
           `SELECT thread_id, settled_at, settled_override,
-                  snoozed_until, snoozed_at, parked_at
+                  snoozed_until, snoozed_at, snooze_pending, parked_at
              FROM thread_lifecycle`,
         )
         .all() as LifecycleDbRow[]
@@ -45,13 +47,14 @@ export function createServerLifecycle(ctx: ServerContext) {
       settledOverride: row.settled_override,
       snoozedUntil: row.snoozed_until,
       snoozedAt: row.snoozed_at,
+      snoozePending: row.snooze_pending === 1,
     }));
 
   const readOne = (threadId: string): StoredLifecycleRow | null => {
     const row = ctx.db
       .prepare(
         `SELECT thread_id, settled_at, settled_override,
-                snoozed_until, snoozed_at, parked_at
+                snoozed_until, snoozed_at, snooze_pending, parked_at
            FROM thread_lifecycle
           WHERE thread_id = ?`,
       )
@@ -64,6 +67,7 @@ export function createServerLifecycle(ctx: ServerContext) {
           settledOverride: row.settled_override,
           snoozedUntil: row.snoozed_until,
           snoozedAt: row.snoozed_at,
+          snoozePending: row.snooze_pending === 1,
         }
       : null;
   };
@@ -72,16 +76,25 @@ export function createServerLifecycle(ctx: ServerContext) {
     ctx.db
       .prepare(
         `INSERT INTO thread_lifecycle
-         (thread_id, settled_at, settled_override, snoozed_until, snoozed_at, parked_at)
-       VALUES (?, ?, ?, ?, ?, ?)
+         (thread_id, settled_at, settled_override, snoozed_until, snoozed_at, snooze_pending, parked_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(thread_id) DO UPDATE SET
          settled_at = excluded.settled_at,
          settled_override = excluded.settled_override,
          snoozed_until = excluded.snoozed_until,
          snoozed_at = excluded.snoozed_at,
+         snooze_pending = excluded.snooze_pending,
          parked_at = excluded.parked_at`,
       )
-      .run(row.threadId, row.settledAt, row.settledOverride, row.snoozedUntil, row.snoozedAt, row.parkedAt ?? null);
+      .run(
+        row.threadId,
+        row.settledAt,
+        row.settledOverride,
+        row.snoozedUntil,
+        row.snoozedAt,
+        row.snoozePending ? 1 : 0,
+        row.parkedAt ?? null,
+      );
     if (publish) {
       ctx.bb.realtime.publish(LIFECYCLE_CHANNEL, { threadId: row.threadId });
     }
@@ -120,6 +133,38 @@ export function createServerLifecycle(ctx: ServerContext) {
     }
     ctx.bb.realtime.publish(LIFECYCLE_CHANNEL, { threadId });
     return true;
+  };
+
+  /**
+   * Start a snooze set during the thread's own turn, now that the turn has
+   * ended. Its final reply came before this moment, so only later attention
+   * wakes it.
+   */
+  const startPendingSnooze = (thread: { id: string; latestAttentionAt: number }): boolean => {
+    const row = readOne(thread.id);
+    if (!row?.snoozePending) return false;
+    write({ ...row, snoozePending: false, snoozedAt: Math.max(Date.now(), thread.latestAttentionAt) });
+    return true;
+  };
+
+  /** A failed turn is news the user has not seen, so its snooze never starts. */
+  const dropPendingSnooze = (threadId: string): void => {
+    if (readOne(threadId)?.snoozePending) clear(threadId);
+  };
+
+  /**
+   * A pending snooze outlived the server that would have seen its turn end.
+   * Start each one from when it was requested: the thread may then wake on
+   * its own last reply, but nothing newer can stay hidden.
+   */
+  const startOrphanedPendingSnoozes = (): void => {
+    const ids = (
+      ctx.db.prepare(`SELECT thread_id FROM thread_lifecycle WHERE snooze_pending = 1`).all() as Array<{
+        thread_id: string;
+      }>
+    ).map((row) => row.thread_id);
+    ctx.db.prepare(`UPDATE thread_lifecycle SET snooze_pending = 0 WHERE snooze_pending = 1`).run();
+    publishLifecycleChanges(ids);
   };
 
   const sameLifecycle = (left: StoredLifecycleRow | null, right: StoredLifecycleRow | null) =>
@@ -341,6 +386,9 @@ export function createServerLifecycle(ctx: ServerContext) {
     publishLifecycleChanges,
     clear,
     clearSettlingState,
+    startPendingSnooze,
+    dropPendingSnooze,
+    startOrphanedPendingSnoozes,
     sameLifecycle,
     wakeAncestors,
     withThreadChanges,

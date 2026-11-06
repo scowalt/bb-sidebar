@@ -73,6 +73,7 @@ describe("children of older parent-only settles", () => {
       settledOverride: "settled",
       snoozedUntil: null,
       snoozedAt: null,
+      snoozePending: false,
     };
     expect(await rowsOf(harness)).toEqual([
       { threadId: "parent", ...inherited },

@@ -115,6 +115,7 @@ export function createServerPolicy(
               settledOverride: null,
               snoozedUntil: row?.snoozedUntil ?? null,
               snoozedAt: row?.snoozedAt ?? null,
+              snoozePending: row?.snoozePending ?? false,
             },
             false,
           );
