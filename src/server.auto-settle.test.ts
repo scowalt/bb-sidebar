@@ -77,6 +77,7 @@ describe("automatic settle evaluation", () => {
       settledOverride: "settled",
       snoozedUntil: null,
       snoozedAt: null,
+      snoozePending: false,
     };
     const after = shelf === "settled" ? { rows: [...before.rows, inherited] } : before;
     const settings = (await harness.behavior.callRpc("getSidebarSettings", {})) as Record<string, unknown>;
