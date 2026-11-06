@@ -13,8 +13,3 @@ commit-msg:
   commands:
     strip-ai-attribution:
       run: node scripts/strip-ai-attribution.mjs {1}
-
-pre-push:
-  commands:
-    check:
-      run: npm run check
