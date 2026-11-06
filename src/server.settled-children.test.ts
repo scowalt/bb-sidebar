@@ -73,6 +73,7 @@ describe("children of older parent-only settles", () => {
       settledOverride: "settled",
       snoozedUntil: null,
       snoozedAt: null,
+      snoozePending: false,
     };
     expect(await rowsOf(harness)).toEqual([
       { threadId: "parent", ...inherited },
@@ -193,6 +194,7 @@ describe("children whose own row leaves them Active inside a settled tree", () =
     settledOverride: "settled",
     snoozedUntil: null,
     snoozedAt: null,
+    snoozePending: false,
   };
 
   it("files them with the tree once, even after the first repair ran", async () => {
@@ -265,6 +267,7 @@ describe("a thread back from the archive", () => {
       settledOverride: "settled",
       snoozedUntil: null,
       snoozedAt: null,
+      snoozePending: false,
     };
     expect(await rowsOf(harness)).toEqual([
       { threadId: "parent", ...inherited },

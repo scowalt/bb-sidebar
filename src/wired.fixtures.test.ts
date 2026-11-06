@@ -79,6 +79,7 @@ const expectedRows = [
     settledOverride: null,
     snoozedUntil: null,
     snoozedAt: null,
+    snoozePending: false,
   },
   {
     threadId: "snoozed",
@@ -87,6 +88,7 @@ const expectedRows = [
     settledOverride: null,
     snoozedUntil: 1_800_003_600_000,
     snoozedAt: 1_800_000_000_000,
+    snoozePending: false,
   },
   {
     threadId: "settled",
@@ -95,6 +97,7 @@ const expectedRows = [
     settledOverride: "settled",
     snoozedUntil: null,
     snoozedAt: null,
+    snoozePending: false,
   },
   {
     threadId: "override",
@@ -103,6 +106,7 @@ const expectedRows = [
     settledOverride: "active",
     snoozedUntil: null,
     snoozedAt: null,
+    snoozePending: false,
   },
   {
     threadId: "child",
@@ -111,6 +115,7 @@ const expectedRows = [
     settledOverride: "settled",
     snoozedUntil: null,
     snoozedAt: null,
+    snoozePending: false,
   },
 ];
 

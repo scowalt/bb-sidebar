@@ -31,15 +31,18 @@ export const INSTALL_DEFAULTS_MIGRATIONS = [
        OR EXISTS (SELECT 1 FROM project_colors)
        OR EXISTS (SELECT 1 FROM title_recovery_attempts)
        OR EXISTS (SELECT 1 FROM sidebar_settings WHERE settings_json IS NOT NULL)`,
-  `INSERT OR IGNORE INTO install_defaults (name)
+];
+
+// This fork appended its own migrations after INSTALL_DEFAULTS_MIGRATIONS
+// before upstream added this one, so it runs after them to keep their indices.
+export const SETTLE_QUIET_THREADS_INSTALL_DEFAULT_MIGRATION = `INSERT OR IGNORE INTO install_defaults (name)
    SELECT 'settle-quiet-threads'
     WHERE EXISTS (SELECT 1 FROM thread_lifecycle)
        OR EXISTS (SELECT 1 FROM inbox_order)
        OR EXISTS (SELECT 1 FROM project_icons)
        OR EXISTS (SELECT 1 FROM project_colors)
        OR EXISTS (SELECT 1 FROM title_recovery_attempts)
-       OR EXISTS (SELECT 1 FROM sidebar_settings WHERE settings_json IS NOT NULL)`,
-];
+       OR EXISTS (SELECT 1 FROM sidebar_settings WHERE settings_json IS NOT NULL)`;
 
 function installKeeps(ctx: ServerContext, name: string): boolean {
   return ctx.db.prepare(`SELECT 1 FROM install_defaults WHERE name = ?`).get(name) !== undefined;
