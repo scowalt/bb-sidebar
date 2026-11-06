@@ -113,6 +113,14 @@ describe("resolveWakeReason", () => {
     expect(resolveWakeReason(snoozed, { ...quiet, latestAttentionAt: 800 }, 1_000)).toBe("attention");
     expect(resolveWakeReason(snoozed, { ...quiet, hasPendingInteraction: true }, 1_000)).toBe("attention");
   });
+
+  it("neither hides nor marks a snooze that waits for its turn to end", () => {
+    const pending = row({ snoozedUntil: 5_000, snoozedAt: 500, snoozePending: true });
+    const reply = { ...quiet, latestAttentionAt: 800 };
+    expect(resolveWakeReason(pending, reply, 1_000)).toBeNull();
+    expect(resolveWakeReason(pending, reply, 6_000)).toBeNull();
+    expect(resolveShelf(pending, quiet, 1_000)).toBe("active");
+  });
 });
 
 describe("snoozeWakeLabel", () => {

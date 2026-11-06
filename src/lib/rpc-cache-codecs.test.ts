@@ -20,6 +20,7 @@ const row = {
   settledOverride: "active" as const,
   snoozedUntil: null,
   snoozedAt: null,
+  snoozePending: false,
 };
 
 describe("settings cache codec", () => {
@@ -101,6 +102,7 @@ describe("lifecycle cache codec", () => {
       for (const value of ["1", Infinity, NaN]) expect(decodeLifecycleRows([{ ...row, [key]: value }])).toBeNull();
     }
     expect(decodeLifecycleRows([{ ...row, settledOverride: "parked" }])).toBeNull();
+    expect(decodeLifecycleRows([{ ...row, snoozePending: 1 }])).toBeNull();
   });
   it("uses the last duplicate row and keeps the 500 most recent rows", () => {
     expect(decodeLifecycleRows([row, { ...row, parkedAt: 20 }])?.get("a")?.parkedAt).toBe(20);

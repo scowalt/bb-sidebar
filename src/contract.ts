@@ -286,6 +286,7 @@ export const bbSidebarRpcContract = defineRpcContract({
           settledOverride: z.enum(["active", "settled"]).nullable().optional(),
           snoozedUntil: z.number().nullable(),
           snoozedAt: z.number().nullable(),
+          snoozePending: z.boolean().optional(),
         }),
       ),
     }),
