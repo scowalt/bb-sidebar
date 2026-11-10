@@ -1,10 +1,15 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.10] - 2026-11-09
 
 ### Added
 
 - **Snooze from the command palette.** bb's command palette (Cmd+K, then Escape to leave thread search) lists "BB Sidebar: Snooze this thread" for 1 hour, 5 hours, this evening, tomorrow morning, and next week, plus "BB Sidebar: Unsnooze this thread". Each acts on the thread in view, with the same rules, toast, and Undo as the row menu. They use these fixed durations, not your configured snooze shortcuts. Settings → Keyboard can bind each one to a key.
+
+### Fixed
+
+- **An agent that snoozes its own thread stays snoozed.** A snooze set while the thread's turn is running now starts when that turn ends, so the turn's final reply no longer wakes the thread at once. If the turn fails, the snooze is dropped.
+- **Leaving the open thread starts a new thread.** Settling, snoozing, parking, or deleting the thread you are viewing now opens a new-thread composer in its project instead of jumping to the first thread in the list.
 
 ## [0.3.9] - 2026-11-08
 
