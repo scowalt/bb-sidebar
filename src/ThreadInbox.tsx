@@ -41,6 +41,7 @@ import { parseConfiguredSnoozePresets } from "./lifecycle";
 import { parseInactiveAfterHours } from "./inactive";
 import { DEFAULT_SIDEBAR_SETTINGS } from "./sidebar-settings";
 import { useScrollFade } from "./useScrollFade";
+import { useSnoozeCommands } from "./useSnoozeCommands";
 import { usePersistedPreference } from "./lib/use-persisted-preference";
 import { activeSortCodec, childExpansionCodec, shelfExpansionCodec } from "./lib/inbox-preference-codecs";
 const SETTLED_INITIAL_LIMIT = 10;
@@ -405,6 +406,7 @@ function ThreadInboxContent({
       void parkActiveThread(thread, () => lifecycle.snooze(thread.id, until)),
     [parkActiveThread, lifecycle],
   );
+  useSnoozeCommands(threads, lifecycle, snoozeThread);
 
   const inboxContext = useInboxContextValues({
     providerById,
