@@ -45,6 +45,7 @@ import { parseInactiveAfterHours } from "./inactive";
 import { DEFAULT_SIDEBAR_SETTINGS } from "./sidebar-settings";
 import { useWorkingForDisplay } from "./StatusSlot";
 import { useScrollFade } from "./useScrollFade";
+import { useSnoozeCommands } from "./useSnoozeCommands";
 import { usePersistedPreference } from "./lib/use-persisted-preference";
 import { activeSortCodec, childExpansionCodec, shelfExpansionCodec } from "./lib/inbox-preference-codecs";
 const SETTLED_INITIAL_LIMIT = 10;
@@ -414,7 +415,6 @@ function ThreadInboxContent({
     },
     [navigate, onNavigate],
   );
-
   const parkThread = useCallback(
     (thread: PluginSidebarThread) => void parkActiveThread(thread, () => lifecycle.park(thread.id)),
     [parkActiveThread, lifecycle],
@@ -428,6 +428,7 @@ function ThreadInboxContent({
       void parkActiveThread(thread, () => lifecycle.snooze(thread.id, until)),
     [parkActiveThread, lifecycle],
   );
+  useSnoozeCommands(threads, lifecycle, snoozeThread);
 
   const inboxContext = useInboxContextValues({
     providerById,
