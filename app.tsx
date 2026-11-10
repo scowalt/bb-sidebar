@@ -8,6 +8,7 @@ import { ParentChip } from "./src/ParentChip";
 import { SubagentsChip } from "./src/SubagentsChip";
 import { SidebarSettings } from "./src/SidebarSettings";
 import { registerThreadHeaderAction } from "./src/bb-sdk";
+import { registerSnoozeCommands } from "./src/lib/snooze-commands";
 
 export default definePluginApp((app) => {
   app.slots.settingsSection({
@@ -40,4 +41,8 @@ export default definePluginApp((app) => {
     title: "Child threads",
     component: SubagentsChip,
   });
+
+  // Palette commands act on the thread in view, so a thread can be snoozed
+  // without finding its row.
+  registerSnoozeCommands(app.commands);
 });

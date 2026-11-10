@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **Snooze from the command palette.** bb's command palette (Cmd+K, then Escape to leave thread search) lists "BB Sidebar: Snooze this thread" for 1 hour, 5 hours, this evening, tomorrow morning, and next week, plus "BB Sidebar: Unsnooze this thread". Each acts on the thread in view, with the same rules, toast, and Undo as the row menu. They use these fixed durations, not your configured snooze shortcuts. Settings → Keyboard can bind each one to a key.
+
 ## [0.3.9] - 2026-11-08
 
 ### Fixed
