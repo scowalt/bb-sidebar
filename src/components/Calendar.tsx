@@ -11,6 +11,7 @@ export function Calendar({
   className,
   classNames,
   showOutsideDays = true,
+  fixedWeeks = true,
   ...props
 }: ComponentProps<typeof DayPicker>) {
   const navButton =
@@ -18,6 +19,7 @@ export function Calendar({
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
+      fixedWeeks={fixedWeeks}
       className={cn("w-fit", className)}
       classNames={{
         months: "relative flex flex-col",
