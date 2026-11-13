@@ -124,24 +124,41 @@ describe("bb sidebar list places children on their parent's shelf", () => {
     ]);
   });
 
-  it("keeps a snooze that waits on the sidebar's scheduled Continue on Snoozed", async () => {
+  it("keeps a snooze that waits on messages scheduled for later on Snoozed", async () => {
     const wake = Date.now() + HOUR_MS;
+    const scheduledAt = (sendAt: number, overrides: Parameters<typeof makeQueueEntry>[0] = {}) =>
+      makeQueueEntry({ sendAt, state: "scheduled", waitingOn: { kind: "time" }, ...overrides });
     const continueAt = (sendAt: number, originPluginId = "bb-sidebar") =>
-      makeQueueEntry({ sendAt, originPluginId, content: [{ type: "text", text: "Continue", mentions: [] }] });
-    const threads = ["scheduled", "other-time", "someone-else"].map((id) =>
-      projectThread({ id, status: "error", queuedWork: "waiting", latestAttentionAt: 50 }),
-    );
+      scheduledAt(sendAt, { originPluginId, content: [{ type: "text", text: "Continue", mentions: [] }] });
+    const threads = [
+      ...["scheduled", "other-time", "someone-else"].map((id) =>
+        projectThread({ id, status: "error", queuedWork: "waiting", latestAttentionAt: 50 }),
+      ),
+      ...["wakeup", "busy", "not-snoozed"].map((id) =>
+        projectThread({ id, queuedWork: "waiting", latestAttentionAt: 50 }),
+      ),
+    ];
     const snoozed = { snoozedUntil: wake, snoozedAt: 60 };
     const { shelves } = await loadWith(
       threads,
-      { scheduled: snoozed, "other-time": snoozed, "someone-else": snoozed },
+      { scheduled: snoozed, "other-time": snoozed, "someone-else": snoozed, wakeup: snoozed, busy: snoozed },
       {
         scheduled: [continueAt(wake)],
         "other-time": [continueAt(wake + 1)],
         "someone-else": [continueAt(wake, "another-plugin")],
+        wakeup: [scheduledAt(wake + HOUR_MS)],
+        busy: [scheduledAt(wake + HOUR_MS), makeQueueEntry({ state: "queued", waitingOn: { kind: "thread-busy" } })],
+        "not-snoozed": [scheduledAt(wake)],
       },
     );
-    expect(await shelves()).toEqual({ scheduled: "snoozed", "other-time": "active", "someone-else": "active" });
+    expect(await shelves()).toEqual({
+      scheduled: "snoozed",
+      "other-time": "snoozed",
+      "someone-else": "snoozed",
+      wakeup: "snoozed",
+      busy: "active",
+      "not-snoozed": "active",
+    });
   });
 
   it("lists a snoozed thread as Active when its limit lookup fails", async () => {
