@@ -316,6 +316,6 @@ export function createServerHandlers(
     ...handlers,
   } satisfies Omit<
     ServerHandlers,
-    "getThreadLimits" | "scheduleLimitContinue" | "cancelLimitContinue" | "listSideChats"
+    "getThreadLimits" | "getScheduledSends" | "scheduleLimitContinue" | "cancelLimitContinue" | "listSideChats"
   >;
 }

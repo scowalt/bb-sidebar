@@ -88,6 +88,12 @@ export type ThreadLimitState = z.infer<typeof threadLimitStateSchema>;
  */
 const threadRecoveryStateSchema = z.union([threadLimitStateSchema, z.object({ retry: queuedRetrySchema }).strict()]);
 export type ThreadRecoveryState = z.infer<typeof threadRecoveryStateSchema>;
+/**
+ * Per thread, the earliest send of a queue that holds only messages scheduled
+ * for later, or null when anything else is queued.
+ */
+const scheduledSendsSchema = z.record(z.string(), z.number().nullable());
+export type ScheduledSends = z.infer<typeof scheduledSendsSchema>;
 
 /**
  * What parking a thread released. These counts are what the toast reminds the
@@ -217,6 +223,10 @@ export const bbSidebarRpcContract = defineRpcContract({
   getThreadLimits: {
     input: z.object({ keys: z.array(z.string().trim().min(1)).max(1000) }).strict(),
     output: z.record(z.string(), threadRecoveryStateSchema.nullable()),
+  },
+  getScheduledSends: {
+    input: z.object({ keys: z.array(z.string().trim().min(1)).max(1000) }).strict(),
+    output: scheduledSendsSchema,
   },
   scheduleLimitContinue: {
     input: threadIdSchema.extend({ sendAt: z.number().int().positive().optional() }).strict(),

@@ -1,13 +1,22 @@
 import type { ServerContext } from "./server-context";
-import { RATE_LIMITS_CHANNEL, type ThreadLimitState, type ThreadRecoveryState } from "./contract";
+import { RATE_LIMITS_CHANNEL, type ScheduledSends, type ThreadLimitState, type ThreadRecoveryState } from "./contract";
 import { rateLimitDetails } from "./server-rate-limit-details";
 import { limitOf } from "./rate-limit-labels";
 import { runThreadTasks } from "./thread-tasks";
 import { portScanContract } from "./port-scan-contract";
 import type { createServerLifecycle } from "./server-lifecycle";
 
-type QueueState = Awaited<ReturnType<ServerContext["bb"]["sdk"]["threads"]["queuedMessages"]["list"]>>[number]["state"];
-const failedState = (state: QueueState) => state === "failed_exhausted" || state === "failed_retrying";
+type QueueEntry = Awaited<ReturnType<ServerContext["bb"]["sdk"]["threads"]["queuedMessages"]["list"]>>[number];
+const failedState = (state: QueueEntry["state"]) => state === "failed_exhausted" || state === "failed_retrying";
+
+function scheduledSendAt(queue: readonly QueueEntry[]): number | null {
+  let earliest: number | null = null;
+  for (const entry of queue) {
+    if (entry.state !== "scheduled" || entry.waitingOn?.kind !== "time" || entry.sendAt === null) return null;
+    earliest = Math.min(earliest ?? entry.sendAt, entry.sendAt);
+  }
+  return earliest;
+}
 
 export function createServerRateLimits({ bb }: ServerContext, lifecycle: ReturnType<typeof createServerLifecycle>) {
   const host = bb.hosts.experimental_client({ contract: portScanContract });
@@ -52,8 +61,10 @@ export function createServerRateLimits({ bb }: ServerContext, lifecycle: ReturnT
   }
   bb.events.on("thread.failed", ({ thread }) => keepWaitingOnContinue(thread.id));
 
+  const queuedMessages = (threadId: string) => bb.sdk.threads.queuedMessages.list({ threadId });
+
   async function queued(threadId: string) {
-    const queue = await bb.sdk.threads.queuedMessages.list({ threadId });
+    const queue = await queuedMessages(threadId);
     return {
       scheduled: queue.find(
         (entry) =>
@@ -179,6 +190,13 @@ export function createServerRateLimits({ bb }: ServerContext, lifecycle: ReturnT
       const result: Record<string, ThreadRecoveryState | null> = {};
       await runThreadTasks([...new Set(keys)], async (threadId) => {
         result[threadId] = await read(threadId);
+      });
+      return result;
+    },
+    async getScheduledSends({ keys }: { keys: string[] }) {
+      const result: ScheduledSends = {};
+      await runThreadTasks([...new Set(keys)], async (threadId) => {
+        result[threadId] = scheduledSendAt(await queuedMessages(threadId));
       });
       return result;
     },

@@ -17,6 +17,14 @@ const retryBooked = { status: "error", indicator: "unread-error", queuedWork: "w
 const retryRunning = { status: "active", indicator: "runtime", queuedWork: "none" } as const;
 const gaveUp = { status: "error", indicator: "unread-error", queuedWork: "none" } as const;
 
+// The server's getScheduledSends: the earliest time-scheduled send, here bb's retry or the sidebar's Continue.
+function scheduledSendAt(recovery: ThreadRecoveryState | null) {
+  const sends = [recovery?.retry, recovery && "scheduled" in recovery ? recovery.scheduled : null].flatMap((entry) =>
+    entry && !entry.failed && entry.sendAt !== null ? [entry.sendAt] : [],
+  );
+  return sends.length > 0 ? Math.min(...sends) : null;
+}
+
 async function mount(
   overrides: Partial<PluginSidebarThread>,
   recovery: ThreadRecoveryState | null,
@@ -44,6 +52,7 @@ async function mount(
       }),
       listLifecycle: () => ({ rows: [] }),
       getThreadLimits: () => ({ failed: recovery }),
+      getScheduledSends: () => ({ failed: scheduledSendAt(recovery) }),
       getThreadExecutionDetails: () => null,
     },
   });
