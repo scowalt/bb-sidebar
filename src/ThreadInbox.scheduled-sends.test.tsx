@@ -25,7 +25,7 @@ async function closeMenu(menu: HTMLElement) {
 }
 
 describe("a thread whose only queued message is scheduled for later", () => {
-  it("offers Snooze but not Park or Settle, and stays Snoozed without them once snoozed", async () => {
+  it("offers Snooze but not Park, Settle or Archive, and stays Snoozed without them once snoozed", async () => {
     const wired = await createWired([waiting("wakeup", "Agent wakeup"), waiting("offline", "Offline send")]);
     const queues: Record<string, ReturnType<typeof makeQueueEntry>[]> = {
       wakeup: [
@@ -51,6 +51,7 @@ describe("a thread whose only queued message is scheduled for later", () => {
     const menu = await menuFor(screen.getByText("Agent wakeup"));
     expect(within(menu).getByText("Snooze")).toBeDefined();
     for (const item of ["Park thread", "Settle"]) expect(within(menu).queryByText(item)).toBeNull();
+    expect(within(menu).getByText("Archive").getAttribute("data-disabled")).not.toBeNull();
     await closeMenu(menu);
 
     expect(within(card("Offline send")).queryByRole("combobox", { name: "Snooze thread" })).toBeNull();
@@ -71,6 +72,7 @@ describe("a thread whose only queued message is scheduled for later", () => {
     const snoozedMenu = await menuFor(await within(snoozed).findByText("Agent wakeup"));
     expect(within(snoozedMenu).getByText("Wake now")).toBeDefined();
     for (const item of ["Park thread", "Settle"]) expect(within(snoozedMenu).queryByText(item)).toBeNull();
+    expect(within(snoozedMenu).getByText("Archive").getAttribute("data-disabled")).not.toBeNull();
     await closeMenu(snoozedMenu);
     const active = screen.getByRole("region", { name: "Active" });
     expect(within(active).queryByText("Agent wakeup")).toBeNull();

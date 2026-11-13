@@ -56,7 +56,8 @@ export const SlimRow = memo(function SlimRow({
       collapsedChildThreads(childThreads, childrenByParentId, activeThreadId, false, isWorking).length > 0);
   // Another plugin's running status keeps the thread where it is.
   const canShelve = !useRowStatusRuns(thread.id);
-  const canFile = canShelve && lifecycle.canPark(thread);
+  const canArchive = lifecycle.canPark(thread);
+  const canFile = canShelve && canArchive;
   const projectName = projectNameById.get(thread.projectId) ?? null;
   const projectIconUrl = iconUrl(thread.projectId, projectIconRevision);
   const onPark = () => parkThread(thread);
@@ -82,6 +83,7 @@ export const SlimRow = memo(function SlimRow({
       onResume={shelf === "parked" ? onRestore : undefined}
       onSettle={canFile && shelf !== "settled" ? onSettle : undefined}
       canSnooze={canShelve && shelf !== "snoozed"}
+      canArchive={canArchive}
       snoozePresets={snoozePresets}
       onSnooze={onSnooze}
       onWake={shelf === "snoozed" ? onRestore : undefined}
