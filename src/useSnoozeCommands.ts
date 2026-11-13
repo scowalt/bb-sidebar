@@ -21,7 +21,7 @@ export function useSnoozeCommands(
       } else if (request.kind === "unsnooze") {
         if (lifecycle.shelfFor(thread) === "snoozed") void lifecycle.unsnooze(thread.id);
         else toast.message("This thread is not snoozed");
-      } else if (!lifecycle.canPark(thread)) {
+      } else if (!lifecycle.canSnooze(thread)) {
         toast.error("Wait until this thread stops working to snooze it");
       } else {
         snoozeThread(thread, request.snoozedUntil);
