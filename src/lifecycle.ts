@@ -81,6 +81,45 @@ export function canPark(
   return !signals.hasPendingInteraction && !signals.hasQueuedWork && !signals.isWorking;
 }
 
+/** Nothing starts before a scheduled send, so a snooze may wait on it. */
+export function waitsOnlyOnScheduledSends(
+  queuedWork: PluginSidebarThread["queuedWork"],
+  scheduledSendAt: number | null | undefined,
+  now: number,
+): boolean {
+  return queuedWork === "waiting" && scheduledSendAt != null && scheduledSendAt > now;
+}
+
+export function canSnooze(
+  signals: Pick<ThreadActivitySignals, "hasPendingInteraction" | "hasQueuedWork" | "isWorking">,
+  waitsOnlyOnScheduled: boolean,
+): boolean {
+  return canPark({ ...signals, hasQueuedWork: signals.hasQueuedWork && !waitsOnlyOnScheduled });
+}
+
+/**
+ * The signals that place a thread on a shelf. Only placement lets a live
+ * snooze wait on a scheduled send. Park, Settle and the server still count it
+ * as queued work.
+ */
+export function placementSignals<T extends Pick<ThreadActivitySignals, "hasQueuedWork">>(
+  signals: T,
+  {
+    row,
+    queuedWork,
+    scheduledSendAt,
+    now,
+  }: {
+    row: Pick<ThreadLifecycleRow, "snoozedUntil"> | undefined;
+    queuedWork: PluginSidebarThread["queuedWork"];
+    scheduledSendAt: number | null | undefined;
+    now: number;
+  },
+): T {
+  const waits = (row?.snoozedUntil ?? 0) > now && waitsOnlyOnScheduledSends(queuedWork, scheduledSendAt, now);
+  return waits ? { ...signals, hasQueuedWork: false } : signals;
+}
+
 /** A turn bb has accepted and not yet finished, in either thread view. */
 export function isTurnInFlight(status: PluginSidebarThread["status"]): boolean {
   return status === "active" || status === "pending" || status === "starting" || status === "stopping";
@@ -182,27 +221,6 @@ export function resolveShelf(
   }
 
   return "active";
-}
-
-/**
- * Whether a thread's queued message is the sidebar's own scheduled Continue,
- * which its snooze is waiting for. That message does not count as queued
- * work: the thread stays Snoozed until the Continue is sent. Any other queued
- * work, or a Continue that failed, keeps the thread visible.
- */
-export function waitsForScheduledContinue(
-  row: Pick<ThreadLifecycleRow, "snoozedUntil"> | undefined,
-  scheduled: { sendAt: number; failed: boolean } | null | undefined,
-  queuedWork: string,
-  now: number,
-): boolean {
-  return (
-    !!scheduled &&
-    scheduled.sendAt > now &&
-    !scheduled.failed &&
-    queuedWork !== "failed" &&
-    row?.snoozedUntil === scheduled.sendAt
-  );
 }
 
 /**

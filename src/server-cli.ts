@@ -1,7 +1,6 @@
 import { PluginCliError, cliCommand, defineCli } from "@get-bb/plugin-sdk";
 import type { PluginCliContext } from "@get-bb/plugin-sdk";
 import type { ServerHandlers } from "./server-context";
-import type { ThreadLimitState } from "./contract";
 import type { createServerLifecycle } from "./server-lifecycle";
 import {
   configuredSnoozePresetError,
@@ -9,9 +8,9 @@ import {
   MAX_SNOOZE_MS,
   parseConfiguredSnoozePresets,
   resolveConfiguredSnoozePreset,
+  placementSignals,
   resolveRowShelf,
   type ThreadShelf,
-  waitsForScheduledContinue,
 } from "./lifecycle";
 import { shelfRowIds } from "./inbox";
 import { ancestorsOfAskingThreads } from "./child-status";
@@ -73,13 +72,10 @@ function parseWake(value: string, now = new Date()): number {
   return wake;
 }
 
-/** The sidebar's provider-limit state for these threads, as its rows read it. */
-type ThreadLimits = (input: { keys: string[] }) => Promise<Record<string, ThreadLimitState | null>>;
-
 export function createServerCli(
   lifecycle: ReturnType<typeof createServerLifecycle>,
   handlers: CliHandlers,
-  threadLimits: ThreadLimits,
+  scheduledSends: ServerHandlers["getScheduledSends"],
 ) {
   const { loadPolicyThreads, readOne, threadSignals } = lifecycle;
 
@@ -95,12 +91,14 @@ export function createServerCli(
     // A child's question shows inside its parent's row, so it counts as the
     // parent's own, as it does in the sidebar.
     const asking = ancestorsOfAskingThreads(threads, (thread) => thread.hasPendingInteraction);
-    // A snooze can wait on the sidebar's own scheduled Continue, which bb
-    // reports as queued work. Only those threads need the limit lookup.
-    const waiting = threads.filter(
+    // A snooze can wait on messages scheduled for later, which bb reports as
+    // queued work.
+    const snoozedWithWaitingQueue = threads.filter(
       (thread) => thread.queuedWork === "waiting" && (readOne(thread.id)?.snoozedUntil ?? 0) > now,
     );
-    const limits = waiting.length ? await threadLimits({ keys: waiting.map((thread) => thread.id) }) : {};
+    const sendAt = snoozedWithWaitingQueue.length
+      ? await scheduledSends({ keys: snoozedWithWaitingQueue.map((thread) => thread.id) })
+      : {};
     const rowShelves = new Map<string, ThreadShelf>();
     const rowShelf = (thread: (typeof threads)[number]) => {
       let shelf = rowShelves.get(thread.id);
@@ -108,10 +106,13 @@ export function createServerCli(
         const row = readOne(thread.id) ?? undefined;
         const signals = threadSignals(thread);
         if (asking.has(thread.id)) signals.hasPendingInteraction = true;
-        if (waitsForScheduledContinue(row, limits[thread.id]?.scheduled, thread.queuedWork, now)) {
-          signals.hasQueuedWork = false;
-        }
-        shelf = resolveRowShelf(row, signals, now, thread.pinnedAt !== null);
+        const placement = placementSignals(signals, {
+          row,
+          queuedWork: thread.queuedWork,
+          scheduledSendAt: sendAt[thread.id],
+          now,
+        });
+        shelf = resolveRowShelf(row, placement, now, thread.pinnedAt !== null);
         rowShelves.set(thread.id, shelf);
       }
       return shelf;
