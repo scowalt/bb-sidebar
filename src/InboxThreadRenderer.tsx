@@ -38,7 +38,7 @@ const InboxThread = memo(function InboxThread({
   threadReorderControls: ReorderControls;
   activeSortMode: ActiveSortMode;
 }) {
-  const { sidebarSettings, lifecycle, childrenByParentId } = useInboxEnvironment();
+  const { sidebarSettings, childrenByParentId } = useInboxEnvironment();
   const { activeThreadId } = useInboxActivity();
   const { setRenamingShelfLocks } = useInboxActions();
   const settings = sidebarSettings ?? DEFAULT_SIDEBAR_SETTINGS;
@@ -61,7 +61,6 @@ const InboxThread = memo(function InboxThread({
       showEnvironment={showEnvironment}
       isActive={thread.id === activeThreadId}
       isWoke={isWoke}
-      canPark={lifecycle.canPark(thread)}
       onRenamingChange={onRenamingChange}
       childThreads={childrenByParentId.get(thread.id) ?? NO_CHILDREN}
       childrenExpanded={childrenExpanded}
