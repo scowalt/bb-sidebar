@@ -180,7 +180,7 @@ export default async function plugin(bb: BbPluginApi) {
   });
   const rateLimits = createServerRateLimits(ctx, lifecycle);
   ctx.bb.rpc.register(bbSidebarRpcContract, { ...handlers, ...rateLimits });
-  ctx.bb.cli.register(createServerCli(lifecycle, handlers, rateLimits.getThreadLimits));
+  ctx.bb.cli.register(createServerCli(lifecycle, handlers, rateLimits.getScheduledSends));
   // New or resumed child work reopens the ancestor path, keeping its existing
   // sidebar nesting reachable. Siblings retain their own settled state.
   ctx.bb.events.on("thread.created", async ({ thread }) => {
