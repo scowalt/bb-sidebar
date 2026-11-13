@@ -89,6 +89,9 @@ function mount({
           : [],
       }),
       getThreadLimits: limits ? async () => ({ limited: await limits() }) : () => ({ limited: state }),
+      getScheduledSends: () => ({
+        limited: state.scheduled && !state.scheduled.failed ? state.scheduled.sendAt : null,
+      }),
       scheduleLimitContinue: scheduleCall,
       cancelLimitContinue: cancelCall,
       settle: settleCall,
@@ -148,6 +151,7 @@ describe("sidebar rate-limit recovery", () => {
           originPluginId: "bb-sidebar",
           content: args.input,
           state: "scheduled",
+          waitingOn: { kind: "time" },
         });
         queue.push(entry);
         return { ok: true, delivery: "queued", queuedMessage: entry };

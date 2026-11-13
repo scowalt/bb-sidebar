@@ -55,7 +55,7 @@ export function useSnoozeCommands(
         // The Snoozed row's menu offers only the way back.
         toast.message("This thread is already snoozed");
       } else {
-        const blocker = lifecycle.parkBlocker(thread);
+        const blocker = lifecycle.snoozeBlocker(thread);
         if (blocker) toast.error("Could not snooze thread", { description: `${title} ${BLOCKED[blocker]}` });
         else snoozeThread(thread, request.snoozedUntil);
       }

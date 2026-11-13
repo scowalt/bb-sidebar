@@ -388,9 +388,11 @@
                       "../**/RateLimitRecovery",
                       "../**/RateLimits",
                       "../**/ThreadInbox.rate-limits.test",
+                      "../**/ThreadInbox.scheduled-sends.test",
                       "./**/RateLimitRecovery",
                       "./**/RateLimits",
-                      "./**/ThreadInbox.rate-limits.test"
+                      "./**/ThreadInbox.rate-limits.test",
+                      "./**/ThreadInbox.scheduled-sends.test"
                     ],
                     "message": "Shared modules must not import TSX app modules."
                   },
@@ -837,7 +839,8 @@
                       "**/wired.flows.test",
                       "**/RateLimitRecovery",
                       "**/RateLimits",
-                      "**/ThreadInbox.rate-limits.test"
+                      "**/ThreadInbox.rate-limits.test",
+                      "**/ThreadInbox.scheduled-sends.test"
                     ],
                     "message": "Node runtime modules must not import TSX app modules."
                   },

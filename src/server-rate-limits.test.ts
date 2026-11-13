@@ -375,3 +375,29 @@ describe("scheduled Continue RPC", () => {
     expect(harness.inspection.sdk.callsTo("threads.queuedMessages.delete")).toHaveLength(0);
   });
 });
+
+describe("getScheduledSends", () => {
+  const later = (sendAt: number, overrides: Parameters<typeof makeQueueEntry>[0] = {}) =>
+    makeQueueEntry({ sendAt, state: "scheduled", waitingOn: { kind: "time" }, initiator: "user", ...overrides });
+
+  it("returns the earliest send of a queue that holds only messages scheduled for later", async () => {
+    const { call, setQueue } = await setup();
+    setQueue([later(resetsAt + 60_000, { id: "wakeup_2" }), later(resetsAt, { id: "wakeup_1" })]);
+    expect(await call("getScheduledSends", { keys: ["thr_1"] })).toEqual({ thr_1: resetsAt });
+  });
+
+  it.each([
+    ["an empty queue", []],
+    ["a failed entry", [later(resetsAt), later(resetsAt, { state: "failed_retrying" })]],
+    ["a claimed entry", [later(resetsAt), later(resetsAt, { state: "claimed" })]],
+    ["a plain queued entry", [later(resetsAt), makeQueueEntry({ state: "queued", waitingOn: null })]],
+    [
+      "a message waiting on something else",
+      [later(resetsAt, { waitingOn: { kind: "host-offline", hostName: "Mac" } })],
+    ],
+  ])("returns null for %s", async (_case, queue) => {
+    const { call, setQueue } = await setup();
+    setQueue(queue);
+    expect(await call("getScheduledSends", { keys: ["thr_1"] })).toEqual({ thr_1: null });
+  });
+});

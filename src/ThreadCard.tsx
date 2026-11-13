@@ -32,7 +32,7 @@ import { OpenPortsIndicator } from "./OpenPorts";
 import { useThreadLimit } from "./RateLimits";
 import { useInboxEnvironment, useInboxActions, useInboxActivity } from "./InboxContext";
 import { DEFAULT_SIDEBAR_SETTINGS } from "./sidebar-settings";
-import { useRowStatusRuns } from "./useLifecycle";
+import { useCardShelving } from "./useLifecycle";
 import { projectIconUrl as iconUrl } from "./project-icons";
 import "./settle-button.css";
 
@@ -64,7 +64,6 @@ export function ThreadCard({
   showEnvironment = true,
   isActive,
   isWoke,
-  canPark,
   childThreads,
   childrenExpanded,
   reorder,
@@ -80,8 +79,6 @@ export function ThreadCard({
   isActive: boolean;
   /** A snooze ended and has not yet been acknowledged. */
   isWoke: boolean;
-  /** False while the thread is working or blocked on the user. */
-  canPark: boolean;
   childThreads: readonly PluginSidebarThread[];
   childrenExpanded: boolean;
   reorder?: ThreadReorderControls;
@@ -100,6 +97,7 @@ export function ThreadCard({
     snoozePresets,
     childrenByParentId: childrenByParent,
     sidebarSettings,
+    lifecycle,
   } = useInboxEnvironment();
   const { onNavigate, parkThread, settleThread, snoozeThread, acknowledgeWake, toggleChildExpansion } =
     useInboxActions();
@@ -203,8 +201,8 @@ export function ThreadCard({
   // Collapsed cards leave their child rows behind the expansion badge.
   const showChildrenWhenCollapsed = showRunningChildrenWhenCollapsed && !compact;
   const emphasis = isWoke ? "woke" : thread.isUnread ? "unread" : thread.indicator === "none" ? "read-idle" : "active";
-  const canShelve = !useRowStatusRuns(thread.id) && canPark;
-  const showParkActions = !isWoke && canShelve && (snoozePresets.length > 0 || !!onPark);
+  const { canArchive, canShelve, canSnooze } = useCardShelving(lifecycle, thread);
+  const showParkActions = !isWoke && canSnooze && (snoozePresets.length > 0 || canShelve);
 
   const unpinButton = thread.isPinned ? (
     <Tooltip label="Unpin thread">
@@ -248,8 +246,8 @@ export function ThreadCard({
     <RowContextMenu
       thread={thread}
       onPark={canShelve ? onPark : undefined}
-      canSnooze={canShelve}
-      canArchive={canPark}
+      canSnooze={canSnooze}
+      canArchive={canArchive}
       snoozePresets={snoozePresets}
       onSnooze={onSnooze}
       onSettle={canShelve ? startSettle : undefined}
@@ -464,9 +462,11 @@ export function ThreadCard({
                           triggerClassName="h-5 w-5 border-0 px-0.5 py-0 shadow-none duration-200 ease-out hover:bg-transparent hover:duration-200 hover:text-[color:var(--bb-sidebar-snooze-active)] focus:ring-0 focus-visible:text-[color:var(--bb-sidebar-snooze-active)] data-[state=open]:text-[color:var(--bb-sidebar-snooze-active)] motion-reduce:transition-none [&>svg:last-child]:size-3"
                           onOpenChange={setIsSnoozeOpen}
                           onSnooze={onSnooze}
-                          onPark={onPark}
+                          onPark={canShelve ? onPark : undefined}
                         />
-                        <ParkButton label="Settle thread" settling={isSettling} onActivate={startSettle} />
+                        {canShelve ? (
+                          <ParkButton label="Settle thread" settling={isSettling} onActivate={startSettle} />
+                        ) : null}
                       </span>
                     ) : null}
                   </span>

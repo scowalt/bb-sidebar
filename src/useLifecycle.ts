@@ -13,15 +13,17 @@ import { promptToCloseSettledPorts } from "./settled-port-prompt";
 import { announcePortsClosed } from "./OpenPorts";
 import {
   canPark,
-  parkBlocker,
+  canSnooze,
   type ParkBlocker,
   formatSnoozeWakeTime,
   nextWakeDelayMs,
   resolveRowShelf,
   resolveWakeReason,
+  placementSignals,
   sidebarThreadSignals,
+  snoozeBlocker,
   type ThreadShelf,
-  waitsForScheduledContinue,
+  waitsOnlyOnScheduledSends,
 } from "./lifecycle";
 import { threadsWithAskingDescendants } from "./child-status";
 import { resolveThreadTitlesIn, threadDisplayTitle } from "./inbox";
@@ -32,7 +34,8 @@ import type { LifecycleRows } from "./useLifecycleRows";
 export interface LifecycleApi {
   shelfFor(thread: PluginSidebarThread): ThreadShelf;
   canPark(thread: PluginSidebarThread): boolean;
-  parkBlocker(thread: PluginSidebarThread): ParkBlocker | null;
+  canSnooze(thread: PluginSidebarThread): boolean;
+  snoozeBlocker(thread: PluginSidebarThread): ParkBlocker | null;
   wakeAtFor(thread: PluginSidebarThread): number | null;
   settledAtFor(thread: PluginSidebarThread): number | null;
   wokeFor(thread: PluginSidebarThread): boolean;
@@ -92,6 +95,12 @@ const ERROR_MESSAGE: Record<LifecycleMutation, string> = {
  */
 export function useRowStatusRuns(threadId: string): boolean {
   return useSidebarThreadRowStatus(threadId)?.tone === "running";
+}
+
+export function useCardShelving(lifecycle: LifecycleApi, thread: PluginSidebarThread) {
+  const runs = useRowStatusRuns(thread.id);
+  const canArchive = lifecycle.canPark(thread);
+  return { canArchive, canShelve: !runs && canArchive, canSnooze: !runs && lifecycle.canSnooze(thread) };
 }
 
 /**
@@ -163,14 +172,13 @@ export function useLifecycle(threads: readonly PluginSidebarThread[], lifecycleR
   }, [now, rows]);
 
   return useMemo<LifecycleApi>(() => {
+    const scheduledSendAt = (thread: PluginSidebarThread) => recovery?.scheduledSends[thread.id];
+    const waitsOnlyOnScheduled = (thread: PluginSidebarThread) =>
+      waitsOnlyOnScheduledSends(thread.queuedWork, scheduledSendAt(thread), now);
     // A descendant's question counts as the parent's own: it brings the tree
     // back from any shelf, ends a snooze, and blocks parking it again.
     const signalsFor = (thread: PluginSidebarThread) => {
       const signals = sidebarThreadSignals(thread);
-      const scheduled = recovery?.rows[thread.id]?.scheduled;
-      if (waitsForScheduledContinue(rows.get(thread.id), scheduled, thread.queuedWork, now)) {
-        signals.hasQueuedWork = false;
-      }
       return askingParentIds.has(thread.id) ? { ...signals, hasPendingInteraction: true } : signals;
     };
     // One mutation per thread at a time. The write publishes on the realtime
@@ -312,9 +320,19 @@ export function useLifecycle(threads: readonly PluginSidebarThread[], lifecycleR
       return true;
     };
     return {
-      shelfFor: (thread) => resolveRowShelf(rows.get(thread.id), signalsFor(thread), now, thread.isPinned),
+      shelfFor: (thread) => {
+        const row = rows.get(thread.id);
+        const signals = placementSignals(signalsFor(thread), {
+          row,
+          queuedWork: thread.queuedWork,
+          scheduledSendAt: scheduledSendAt(thread),
+          now,
+        });
+        return resolveRowShelf(row, signals, now, thread.isPinned);
+      },
       canPark: (thread) => canPark(signalsFor(thread)),
-      parkBlocker: (thread) => parkBlocker(signalsFor(thread)),
+      canSnooze: (thread) => canSnooze(signalsFor(thread), waitsOnlyOnScheduled(thread)),
+      snoozeBlocker: (thread) => snoozeBlocker(signalsFor(thread), waitsOnlyOnScheduled(thread)),
       wakeAtFor: (thread) => rows.get(thread.id)?.snoozedUntil ?? null,
       parkedAtFor: (thread) => rows.get(thread.id)?.parkedAt ?? null,
       park: (threadId) => mutate({ method: "park", threadId }),

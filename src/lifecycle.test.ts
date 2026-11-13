@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   configuredSnoozePresetError,
   canPark,
+  canSnooze,
   combineSnoozeDateTime,
   defaultPickedSnooze,
   formatPickedSnooze,
@@ -9,10 +10,12 @@ import {
   DEFAULT_SNOOZE_PRESET_CONFIG,
   nextWakeDelayMs,
   parseConfiguredSnoozePresets,
+  placementSignals,
   resolveShelf,
   resolveWakeReason,
   resolveConfiguredSnoozePreset,
   snoozeWakeLabel,
+  waitsOnlyOnScheduledSends,
   MAX_TIMEOUT_MS,
   type ThreadActivitySignals,
   type ThreadLifecycleRow,
@@ -51,6 +54,44 @@ describe("canPark", () => {
 
   it("allows a quiet thread", () => {
     expect(canPark(quiet)).toBe(true);
+  });
+});
+
+describe("queued work that waits only on a scheduled send", () => {
+  const now = 1_000;
+  const queued = { ...quiet, hasQueuedWork: true };
+
+  it("is a waiting queue whose send time is still ahead", () => {
+    expect(waitsOnlyOnScheduledSends("waiting", now + 1, now)).toBe(true);
+    expect(waitsOnlyOnScheduledSends("waiting", now, now)).toBe(false);
+    expect(waitsOnlyOnScheduledSends("failed", now + 1, now)).toBe(false);
+    expect(waitsOnlyOnScheduledSends("waiting", null, now)).toBe(false);
+  });
+
+  it("allows Snooze but not Park", () => {
+    expect(canSnooze(queued, true)).toBe(true);
+    expect(canPark(queued)).toBe(false);
+    expect(canSnooze(queued, false)).toBe(false);
+    expect(canSnooze({ ...queued, isWorking: true }, true)).toBe(false);
+    expect(canSnooze({ ...queued, hasPendingInteraction: true }, true)).toBe(false);
+  });
+
+  it("keeps a live snooze on Snoozed until the send time", () => {
+    const snoozed = row({ snoozedUntil: now + 10, snoozedAt: now - 10 });
+    const shelf = (scheduledSendAt: number | null, threadRow = snoozed, queuedWork: "waiting" | "failed" = "waiting") =>
+      resolveShelf(threadRow, placementSignals(queued, { row: threadRow, queuedWork, scheduledSendAt, now }), now);
+    expect(shelf(now + 5)).toBe("snoozed");
+    expect(shelf(now + 50)).toBe("snoozed");
+    expect(shelf(now - 1)).toBe("active");
+    expect(shelf(null)).toBe("active");
+    expect(shelf(now + 50, row({ snoozedUntil: now - 1, snoozedAt: now - 10 }))).toBe("active");
+    expect(shelf(now + 5, snoozed, "failed")).toBe("active");
+  });
+
+  it("counts the queued work of a thread that is not snoozed", () => {
+    expect(placementSignals(queued, { row: undefined, queuedWork: "waiting", scheduledSendAt: now + 5, now })).toEqual(
+      queued,
+    );
   });
 });
 
