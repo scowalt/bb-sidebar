@@ -44,6 +44,7 @@ import { parseConfiguredSnoozePresets } from "./lifecycle";
 import { parseInactiveAfterHours } from "./inactive";
 import { DEFAULT_SIDEBAR_SETTINGS } from "./sidebar-settings";
 import { useWorkingForDisplay } from "./StatusSlot";
+import { holdsUnreadForWork } from "./working-tree";
 import { useScrollFade } from "./useScrollFade";
 import { useShelveActions } from "./useShelveActions";
 import { usePersistedPreference } from "./lib/use-persisted-preference";
@@ -227,6 +228,17 @@ function ThreadInboxContent({
     pinnedBase,
     sidebarSettings?.showRunningChildrenWhenCollapsed,
   ]);
+  const heldUnreadIds = useMemo(
+    () =>
+      new Set(
+        orderedInbox
+          .filter((thread) =>
+            holdsUnreadForWork(thread, childrenByParentId.get(thread.id) ?? [], childrenByParentId, isWorking),
+          )
+          .map((thread) => thread.id),
+      ),
+    [childrenByParentId, isWorking, orderedInbox],
+  );
   const visiblePinned = useMemo(
     () => visibleShelfThreads(pinned, expandedShelves.pinned, activeListThreadId, undefined, attentionParentIds),
     [attentionParentIds, activeListThreadId, expandedShelves.pinned, pinned],
@@ -237,6 +249,7 @@ function ThreadInboxContent({
     expanded: expandedShelves.active,
     activeThreadId: activeListThreadId,
     attentionIds: attentionParentIds,
+    heldUnreadIds,
     projectNameById,
     projectMode: activeSortMode === "project",
     orderReady: status === "ready" && inboxReorder.loaded,
