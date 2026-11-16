@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect } from "@playwright/test";
-import { test, fixture, cli, rpc, shelf, link, expand, reset, open } from "./helpers.mjs";
+import { test, fixture, cli, rpc, shelf, link, expand, reset, open, expectSidebarWidth } from "./helpers.mjs";
 
 async function capture(page, testInfo, name) {
   await page.addStyleTag({ path: "e2e/snapshot.css" });
@@ -30,8 +30,7 @@ for (const [name, theme, width] of [
     await expect(link(page, cedar.title, "Snoozed")).toBeVisible();
     await expect(link(page, delta.title, "Settled")).toBeVisible();
     await page.mouse.move(1000, 750);
-    const sidebar = page.locator("[data-bb-sidebar-root]");
-    expect(Math.round((await sidebar.boundingBox()).width)).toBe(width);
+    await expectSidebarWidth(page, width);
     await capture(page, testInfo, `${name}.png`);
     await expect(shelf(page, "Active").getByRole("link")).toHaveCount(1);
   });
