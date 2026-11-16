@@ -26,7 +26,7 @@ import { limitSlotClass, STATUS_SLOT_CLASS, StatusOrTime, useStatusLimit, useWor
 import { CompactStatusOrTime } from "./StatusGlyph";
 import { threadDisplayTitle } from "./inbox";
 import { InlineThreadTitle } from "./InlineThreadTitle";
-import { isWorkingTree } from "./working-tree";
+import { holdsUnreadForWork, isWorkingTree, withUnreadHeld } from "./working-tree";
 import { ProjectFavicon, ProjectStripe } from "./ProjectFavicon";
 import { useProjectColor } from "./ProjectColors";
 import { OpenPortsIndicator } from "./OpenPorts";
@@ -188,6 +188,7 @@ export function ThreadCard({
   const childListId = useId();
   // Keep busy trees compact until a failure, question, or wake needs attention.
   const working = useWorkingForDisplay();
+  const shown = holdsUnreadForWork(thread, childThreads, childrenByParent, working) ? withUnreadHeld(thread) : thread;
   const naturalCompact =
     compactAlways || (compactWhenWorking && !isWoke && isWorkingTree(thread, childThreads, childrenByParent, working));
   const compact = isRenaming ? compactAtRenameStart.current : naturalCompact;
@@ -200,7 +201,7 @@ export function ThreadCard({
   };
   // Collapsed cards leave their child rows behind the expansion badge.
   const showChildrenWhenCollapsed = showRunningChildrenWhenCollapsed && !compact;
-  const emphasis = isWoke ? "woke" : thread.isUnread ? "unread" : thread.indicator === "none" ? "read-idle" : "active";
+  const emphasis = isWoke ? "woke" : shown.isUnread ? "unread" : shown.indicator === "none" ? "read-idle" : "active";
   const { canArchive, canShelve, canSnooze } = useCardShelving(lifecycle, thread);
   const showParkActions = !isWoke && canSnooze && (snoozePresets.length > 0 || canShelve);
 
@@ -266,7 +267,7 @@ export function ThreadCard({
         <div data-drag-visual="">
           {compact ? (
             <CompactRow
-              thread={thread}
+              thread={shown}
               tone="normal"
               showProject={showProject}
               projectIconOnly={projectIconOnly}
@@ -318,7 +319,7 @@ export function ThreadCard({
                     <>
                       {unpinButton}
                       {isWoke ? <WokeMarker onDismiss={onAcknowledgeWake} /> : null}
-                      <CompactStatusOrTime thread={thread} now={now} />
+                      <CompactStatusOrTime thread={shown} now={now} />
                     </>
                   )}
                   <ProviderGlyph providerId={thread.providerId} provider={provider} />
@@ -411,7 +412,7 @@ export function ThreadCard({
                   <span className={cn(STATUS_SLOT_CLASS, "w-auto gap-1.5")}>
                     {unpinButton}
                     <WokeMarker onDismiss={onAcknowledgeWake} />
-                    <StatusOrTime thread={thread} now={now} />
+                    <StatusOrTime thread={shown} now={now} />
                   </span>
                 ) : (
                   <span
@@ -439,7 +440,7 @@ export function ThreadCard({
                       )}
                     >
                       {!showParkActions ? unpinButton : null}
-                      <StatusOrTime thread={thread} now={now} />
+                      <StatusOrTime thread={shown} now={now} />
                     </span>
                     {showParkActions ? (
                       <span
