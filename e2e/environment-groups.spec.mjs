@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { expect } from "@playwright/test";
 import { seededTest as test } from "./seeds.mjs";
-import { fixture, cli, rpc, reset, open, shelf } from "./helpers.mjs";
+import { fixture, cli, rpc, reset, open, shelf, expectSidebarWidth } from "./helpers.mjs";
 
 for (const [name, theme, width] of [
   ["dark", "dark", 320],
@@ -35,7 +35,7 @@ for (const [name, theme, width] of [
     const sidebar = page.locator("[data-bb-sidebar-root]");
     await page.addStyleTag({ path: "e2e/snapshot.css" });
     await page.mouse.move(1000, 750);
-    expect(Math.round((await sidebar.boundingBox()).width)).toBe(width);
+    await expectSidebarWidth(page, width);
     await sidebar.screenshot({ path: `e2e-artifacts/environment-picker-${name}.png`, animations: "disabled" });
     await page.keyboard.press("Escape");
     await expect(toggle).toHaveCount(0);
