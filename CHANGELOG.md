@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.12] - 2026-11-16
+
 ### Changed
 
 - **A parent's Unread waits for its agents.** When a thread finished its turn while a subthread, or one of its own background agents, was still running, its row turned bold with a green "Unread" even though it was only standing by. The row now stays plain, showing its age (or "Agent" while its own background agents run), until all of that work has ended; then it shows "Unread" and goes bold as before. A subthread that asks you a question ends the wait at once, a failed parent still reads "Failed", and a background command of the thread itself never holds it, since a dev server runs forever. A collapsed project group also leaves out the green "done" dot for such a parent until the work ends. bb's read state is untouched: the row menu still offers "Mark read", and the hover card still lists the thread's real status.
