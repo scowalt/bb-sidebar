@@ -101,3 +101,18 @@ export async function open(page, { theme = "light", width = 320, empty = false }
     await expect(shelf(page, "Active")).toBeVisible();
   }
 }
+
+// bb keeps a scrollbar lane in its sidebar content (0 px with overlay scrollbars).
+export async function expectSidebarWidth(page, width) {
+  const { content, lane, root } = await page.evaluate(() => {
+    const root = document.querySelector("[data-bb-sidebar-root]");
+    const content = root.closest('[data-sidebar="content"]');
+    return {
+      content: content.offsetWidth,
+      lane: content.offsetWidth - content.clientWidth,
+      root: root.getBoundingClientRect().width,
+    };
+  });
+  expect(content).toBe(width);
+  expect(Math.round(root)).toBe(width - lane);
+}
