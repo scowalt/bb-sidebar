@@ -98,7 +98,11 @@ export function unitsAtScope(units: readonly ProjectUnit[], parentKey: string | 
 const ALERT_KINDS: readonly GroupAlert["kind"][] = ["failed", "needs-you", "done"];
 
 /** News among the threads a collapsed group hides, most urgent first. */
-function hiddenAlerts(threads: readonly PluginSidebarThread[], shown: readonly PluginSidebarThread[]): GroupAlert[] {
+function hiddenAlerts(
+  threads: readonly PluginSidebarThread[],
+  shown: readonly PluginSidebarThread[],
+  heldUnreadIds: ReadonlySet<string>,
+): GroupAlert[] {
   const shownIds = new Set(shown.map((thread) => thread.id));
   const counts = new Map<ChildStatusKind | null, number>();
   for (const thread of threads) {
@@ -106,6 +110,8 @@ function hiddenAlerts(threads: readonly PluginSidebarThread[], shown: readonly P
     // Group dots carry news only; live work is never one, so nothing here
     // asks whether a thread is working.
     const kind = childStatusKind(thread, () => false);
+    // A parent standing by for its agents has no news yet.
+    if (kind === "done" && heldUnreadIds.has(thread.id)) continue;
     counts.set(kind, (counts.get(kind) ?? 0) + 1);
   }
   return ALERT_KINDS.flatMap((kind) => {
@@ -119,6 +125,7 @@ export function projectGroupView(
   collapsedProjects: ReadonlySet<string>,
   collapsedEnvironments: ReadonlySet<string>,
   activeThreadId: string | null,
+  heldUnreadIds: ReadonlySet<string>,
 ): ProjectViewUnit[] {
   return units.map((unit) => {
     if (unit.kind === "thread") return unit;
@@ -130,11 +137,11 @@ export function projectGroupView(
       ...unit,
       expanded,
       threadCount: unit.threads.length,
-      alerts: expanded ? [] : hiddenAlerts(unit.threads, threads),
+      alerts: expanded ? [] : hiddenAlerts(unit.threads, threads, heldUnreadIds),
       threads,
       children:
         expanded && unit.children
-          ? projectGroupView(unit.children, collapsedProjects, collapsedEnvironments, activeThreadId)
+          ? projectGroupView(unit.children, collapsedProjects, collapsedEnvironments, activeThreadId, heldUnreadIds)
           : undefined,
     };
   });
