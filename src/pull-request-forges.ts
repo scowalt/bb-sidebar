@@ -28,12 +28,13 @@ export function parsePullRequestUrl(url: string): PullRequestIdentity | null {
   };
 }
 
-// A command runs at the start, after a shell separator, a `{` or a `do`, or
-// as the script of a `zsh -lc "…"` wrapper (how Codex records commands),
-// with optional `VAR=x`, `timeout 60` and path prefixes. Mentions inside
-// quotes or prose, like a grep for the phrase, do not count.
+// A command runs at the start, after a shell separator, a `$(` or a `{`, at
+// the start of a line or statement after `do`, `then` or `else`, or as the
+// script of a `zsh -lc "…"` wrapper (how Codex records commands), with
+// optional `VAR=x`, `timeout 60` and path prefixes. Mentions inside quotes or
+// prose, like a grep for the phrase or `echo "(gh pr create)"`, do not count.
 const ANCHOR =
-  String.raw`(?:^(?:[\w./-]*\/)?(?:ba|z)?sh\s+-[a-z]*c\s+["']|^|[\n;&|({]|\b(?:do|then|else)\s)\s*` +
+  String.raw`(?:^(?:[\w./-]*\/)?(?:ba|z)?sh\s+-[a-z]*c\s+["']|^|[\n;&|{]|\$\(|(?:^|[\n;])\s*(?:do|then|else)\s)\s*` +
   String.raw`(?:\w+=\S*\s+)*(?:(?:timeout|nice|nohup|command|exec)\s+(?:-\S+\s+)*(?:\d+[smh]?\s+)?)?(?:[\w./-]*\/)?`;
 // The rest of the command up to the next separator: where its options are.
 const REST = String.raw`([^\n;&|]*)`;
@@ -41,12 +42,96 @@ const GH_CREATE = new RegExp(`${ANCHOR}gh\\s+pr\\s+create\\b${REST}`, "g");
 const TEA_CREATE = new RegExp(`${ANCHOR}tea\\s+(?:pr|pulls?)\\s+(?:create|c)\\b${REST}`, "g");
 const TEA_API = new RegExp(`${ANCHOR}tea\\s+api\\b${REST}`, "g");
 const REPO_OPTION = /(?:^|\s)(?:--repo|-[Rr])[\s=]+["']?([\w.-]+\/[\w.-]+)/;
-const API_METHOD = /(?:^|\s)(?:-X|--method)[\s=]*["']?(POST|PATCH)\b/;
-// `repos/o/r/pulls`, `repos/o/$1/pulls` or `$R/pulls/$n`: the segments may be
-// shell variables, which name no repo. Ends at a quote, a space, or the end,
-// so `/pulls/12/merge` and `/pulls/12/reviews` never count as writing a PR.
-const API_PULLS_PATH = /(?:repos\/([^\s"'/]+\/[^\s"'/]+)|\$\{?\w+\}?)\/pulls(?:\/([^\s"'/]+))?(?=["'\s]|$)/;
-const isLiteral = (segment: string | undefined): segment is string => segment !== undefined && !segment.includes("$");
+// `repos/o/r/pulls`, `repos/o/$1/pulls`, `repos/$REPO/pulls` or `$R/pulls/$n`,
+// as one whole argument: the segments may be shell variables or tea's
+// `{owner}` placeholders, which name no repo. `/pulls/12/merge` and
+// `/pulls/12/reviews` never count as writing a PR.
+const API_PULLS_PATH = /^\/?(?:api\/v1\/)?(?:repos\/([^/]+\/[^/]+|\$\{?\w+\}?)|\$\{?\w+\}?)\/pulls(?:\/([^/]+))?$/;
+const isLiteral = (segment: string | undefined): segment is string => segment !== undefined && !/[${]/.test(segment);
+
+/**
+ * The words of a command's options, quotes removed and `$(…)` kept whole, up
+ * to a `#` that starts a comment.
+ */
+function shellWords(rest: string): string[] {
+  const words: string[] = [];
+  let word = "";
+  let inWord = false;
+  let quote: string | null = null;
+  let substitutions = 0;
+  for (let index = 0; index < rest.length; index++) {
+    const char = rest[index]!;
+    if (quote) {
+      if (char === quote) quote = null;
+      else word += char;
+    } else if (char === "$" && rest[index + 1] === "(") {
+      substitutions++;
+      word += "$(";
+      index++;
+      inWord = true;
+    } else if (substitutions) {
+      if (char === ")") substitutions--;
+      word += char;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+      inWord = true;
+    } else if (/\s/.test(char)) {
+      if (inWord) words.push(word);
+      word = "";
+      inWord = false;
+    } else if (char === "#" && !inWord) {
+      break;
+    } else {
+      word += char;
+      inWord = true;
+    }
+  }
+  if (inWord) words.push(word);
+  return words;
+}
+
+/** `tea api` options that take a value, so the word after them is not the endpoint. */
+const TEA_API_VALUE_OPTIONS = new Set([
+  "-X",
+  "--method",
+  "-f",
+  "--field",
+  "-F",
+  "--Field",
+  "-H",
+  "--header",
+  "-d",
+  "--data",
+  "-o",
+  "--output",
+  "-l",
+  "--login",
+  "-r",
+  "--repo",
+  "-R",
+  "--remote",
+]);
+
+/** The method and endpoint of one `tea api` invocation, from its own arguments only. */
+function teaApiTarget(rest: string): { method: string | null; path: string | null } {
+  let method: string | null = null;
+  let path: string | null = null;
+  const words = shellWords(rest);
+  for (let index = 0; index < words.length; index++) {
+    const word = words[index]!;
+    if (!word.startsWith("-")) {
+      path ??= word;
+      continue;
+    }
+    const equals = word.indexOf("=");
+    const name = equals > 0 ? word.slice(0, equals) : word;
+    const inline =
+      equals > 0 ? word.slice(equals + 1) : name.startsWith("-X") && name.length > 2 ? name.slice(2) : null;
+    if (name === "-X" || name === "--method" || name.startsWith("-X")) method = inline ?? words[++index] ?? null;
+    else if (TEA_API_VALUE_OPTIONS.has(name) && inline === null) index++;
+  }
+  return { method, path };
+}
 // Split Pi's doubled OSC 8 output, `…/pulls/16575https://…/pulls/16575`, into
 // two matches: no trailing anchor.
 const OUTPUT_URL = /https?:\/\/[\w.-]+(?::\d+)?\/[\w.-]+\/[\w.-]+\/pulls?\/\d+/g;
@@ -69,9 +154,10 @@ function acceptances(command: string): Acceptance[] {
   for (const [, rest] of command.matchAll(GH_CREATE)) accepted.push(byRepoOption(rest!));
   for (const [, rest] of command.matchAll(TEA_CREATE)) accepted.push(byRepoOption(rest!));
   for (const [, rest] of command.matchAll(TEA_API)) {
-    const method = API_METHOD.exec(rest!)?.[1];
-    const path = API_PULLS_PATH.exec(rest!);
-    if (!method || !path) continue;
+    const target = teaApiTarget(rest!);
+    const method = target.method?.toUpperCase();
+    const path = target.path === null ? null : API_PULLS_PATH.exec(target.path);
+    if ((method !== "POST" && method !== "PATCH") || !path) continue;
     const [, repo, number] = path;
     if (!isLiteral(repo)) accepted.push(() => true);
     else if (method === "PATCH" && isLiteral(number)) {

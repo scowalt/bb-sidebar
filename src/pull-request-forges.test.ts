@@ -81,8 +81,11 @@ describe("createdPullRequestUrls", () => {
         command(`tea api -X PATCH repos/o/r/pulls/12 -d '{"base":"main"}'`, `{"html_url":"${gitea(12)}"}`),
         command("tea api --method POST 'repos/o/r/pulls' -d @f", gitea(5)),
         command("tea pr c --repo o/r", gitea(8)),
+        command("tea api -X POST -H 'Accept: application/json' --login work repos/o/r/pulls -d @f", gitea(9)),
+        command("tea api repos/o/r/pulls/12 --method=PATCH -d @f", gitea(12)),
+        command("tea api -XPOST /api/v1/repos/o/r/pulls -f title=t", gitea(13)),
       ]),
-    ).toEqual([gitea(16575), gitea(2), gitea(3), gitea(12), gitea(5), gitea(8)]);
+    ).toEqual([gitea(16575), gitea(2), gitea(3), gitea(12), gitea(5), gitea(8), gitea(9), gitea(13)]);
   });
 
   it("finds creates behind timeout, inside function bodies and loops, and with shell variables in the path", () => {
@@ -127,6 +130,12 @@ describe("createdPullRequestUrls", () => {
       createdPullRequestUrls([
         command('bb thread search "gh pr create" --json', github(1)),
         command('bb thread search "tea pr create" --json', gitea(1)),
+        command('bb thread search "how do tea pr create" --json', gitea(1)),
+        command('rg "then gh pr create" ~/logs', github(1)),
+        command('echo "(gh pr create)"', github(1)),
+        command("tea api repos/o/r/pulls/12 # last set with -X PATCH", gitea(12)),
+        command(`tea api -X POST repos/o/r/issues/12/comments -d '{"body":"see repos/o/r/pulls/12"}'`, gitea(12)),
+        command(`tea api -X POST -d '{"base":"repos/o/r/pulls"}' repos/o/r/issues`, gitea(12)),
         command("bb thread log thr_a --json | python3 -c \"\nif 'tea pr create' in s: print(s)\"", gitea(2)),
         command("grep -rn 'opened with `gh pr create`' CHANGELOG.md", github(3)),
         command("tea api -X POST repos/o/r/pulls/12/merge", gitea(12)),
