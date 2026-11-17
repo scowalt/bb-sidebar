@@ -94,7 +94,8 @@ describe("pull request rail", () => {
     const bar = await rail("Pull requests: 1 of 4 merged, 1 failing, 1 running");
     expect(segments(bar)).toEqual(["merged", "checks_pending", "checks_failed", "closed"]);
     const pending = bar.querySelector('[data-status="checks_pending"]')!;
-    expect(pending.className).toContain("bb-sidebar-working-pulse");
+    expect(pending.className).toContain("bb-sidebar-pr-pending");
+    expect(pending.className).not.toContain("bb-sidebar-working-pulse");
     expect(bar.querySelector('[data-status="checks_failed"]')!.className).toContain("bb-sidebar-pr-alert");
     expect(bar.className).toContain("pointer-events-none");
     expect(bar.className).toContain("absolute");

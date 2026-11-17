@@ -3,7 +3,6 @@ import { useThreadPullRequests } from "./bb-sdk";
 import { useInboxSettledThreadIds } from "./InboxContext";
 import { Tooltip } from "./components/Tooltip";
 import { cn } from "./lib/utils";
-import { syncWorkingPulse } from "./StatusGlyph";
 import { pullRequestRef } from "./pull-request-cards";
 import {
   describePullRequests,
@@ -47,17 +46,11 @@ const RAIL_POSITION = {
 type RailLayout = keyof typeof RAIL_POSITION;
 
 function Segment({ segment }: { segment: RailSegment }) {
-  const pulse = segment.status === "checks_pending";
   return (
     <span
       data-status={segment.status}
       style={{ flexGrow: segment.span }}
-      className={cn(
-        "min-w-0 basis-0 rounded-full",
-        PR_TONE_BG[PR_STATUS[segment.status].tone],
-        pulse && "bb-sidebar-working-pulse",
-      )}
-      onAnimationStart={pulse ? syncWorkingPulse : undefined}
+      className={cn("min-w-0 basis-0 rounded-full", PR_TONE_BG[PR_STATUS[segment.status].tone])}
     />
   );
 }
