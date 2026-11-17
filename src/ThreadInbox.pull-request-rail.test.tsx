@@ -273,19 +273,34 @@ describe("pull requests in the hover card", () => {
       "1",
       "0",
     ]);
-    const detailLine = (text: string) => within(list).getByText(text).parentElement?.textContent;
+    const lineOf = (text: string) => within(list).getByText(text).parentElement?.textContent;
     expect(within(list).getByText("PR Format / format failed").className).toContain("bb-sidebar-pr-alert");
-    expect(detailLine("PR Format / format failed")).toMatch(/^Checks failed\s*·\s*PR Format \/ format failedconflicts/);
-    expect(detailLine("3 of 19 checks running")).toMatch(/^Checks running\s*·\s*3 of 19 checks running/);
-    expect(within(list).getByText("conflicts")).toBeTruthy();
-    expect(within(list).getByText("3 of 19 checks running")).toBeTruthy();
-    expect(detailLine("Awaiting review")).toMatch(/^Awaiting review\s*·/);
+    expect(lineOf("PR Format / format failed")).toBe("PR Format / format failedconflicts");
+    expect(lineOf("3 of 19 checks running")).toBe("3 of 19 checks running");
+    expect(lineOf("Checks failed")).toBe("#11·Checks failed+10 −2");
+    expect(lineOf("Checks running")).toBe("#10·Checks running+10 −2");
+    expect(lineOf("Awaiting review")).toBe("#12·Awaiting review+10 −2");
+    expect(within(list).getByText("Child").parentElement?.parentElement?.children).toHaveLength(3);
     expect(within(list).getAllByText("+10")).toHaveLength(3);
     fireEvent.click(within(card).getByRole("button", { name: "Show 2 merged, 1 closed" }));
     expect(refs()).toEqual(["#10", "#11", "#12", "#2", "#1", "#3"]);
-    expect(within(list).getByText("Closed").parentElement?.textContent).toMatch(/^Closed\+/);
+    expect(lineOf("Closed")).toBe("#3·Closed+10 −2");
+    expect(within(list).getByText("Closed").parentElement?.parentElement?.children).toHaveLength(2);
     expect(within(list).getAllByText(/^Merged \d+d ago$/)).toHaveLength(2);
     expect(within(list).queryByText("Merged")).toBeNull();
+  });
+
+  it("renders a long title whole, clamped to two lines, with the full title on hover", async () => {
+    const longTitle = "feat(customers): Show Ads and Calling status on My Customers and in the customer detail drawer";
+    const { card } = await openCard({
+      scanned: true,
+      scanFailed: false,
+      entries: [entry(5, { title: longTitle })],
+    });
+    const title = within(card).getByText(longTitle);
+    expect(title.className).toContain("line-clamp-2");
+    expect(title.className).toContain("break-words");
+    expect(title.getAttribute("title")).toBe(longTitle);
   });
 
   it("says it is looking while the thread's log has not been scanned", async () => {
