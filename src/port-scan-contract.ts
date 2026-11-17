@@ -5,8 +5,19 @@ import {
   ownedPortTargetSchema,
   closePortsResultSchema,
   portCloseScopeSchema,
-  threadPullRequestSchema,
+  pullRequestFactsSchema,
 } from "./contract";
+
+export const pullRequestLookupResultSchema = z.discriminatedUnion("outcome", [
+  z.object({ url: z.string(), outcome: z.literal("found"), facts: pullRequestFactsSchema }),
+  z.object({
+    url: z.string(),
+    outcome: z.literal("failed"),
+    reason: z.enum(["missing_tool", "unauthorized", "not_found", "timeout", "error"]),
+  }),
+]);
+export type PullRequestLookupResult = z.infer<typeof pullRequestLookupResultSchema>;
+export const PULL_REQUEST_HOST_CALL_TIMEOUT_MS = 30_000;
 
 const rootSchema = z.object({ environmentId: z.string(), path: z.string().min(1) });
 export type PortRoot = z.infer<typeof rootSchema>;
@@ -30,11 +41,10 @@ export const portScanContract = defineRpcContract({
     }),
     output: closePortsResultSchema,
   },
-  // The plugin's only host entry, so it also runs `gh` where the thread's
-  // workspace (and its GitHub sign-in) lives.
-  pullRequests: {
-    input: z.object({ urls: z.array(z.string().url()).min(1).max(200) }),
-    output: z.object({ pullRequests: z.array(threadPullRequestSchema) }),
+  lookUpPullRequests: {
+    input: z.object({ urls: z.array(z.string().url()).min(1).max(20) }),
+    output: z.object({ pullRequests: z.array(pullRequestLookupResultSchema) }),
+    experimental_retryable: true,
   },
   scan: {
     input: z.object({ roots: z.array(rootSchema).max(10000) }),

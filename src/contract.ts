@@ -11,6 +11,8 @@ import {
 import { configuredSnoozePresetError } from "./lifecycle";
 import { MAX_INACTIVE_AFTER_HOURS, MIN_INACTIVE_AFTER_HOURS } from "./inactive";
 import { MAX_AUTO_SETTLE_AFTER_DAYS, MIN_AUTO_SETTLE_AFTER_DAYS } from "./auto-settle";
+import type { PullRequestEntry, PullRequestFacts, ThreadPullRequests } from "./pull-request-status";
+import { pullRequestsTag } from "./rpc-tags";
 export {
   SIDEBAR_SETTINGS_CHANNEL,
   PROJECT_ICONS_CHANNEL,
@@ -41,15 +43,37 @@ const portSnapshotSchema = z.object({
 
 export type PortSnapshot = z.infer<typeof portSnapshotSchema>;
 
-export const threadPullRequestSchema = z
-  .object({
-    url: z.string(),
-    number: z.number().int(),
-    title: z.string().nullable(),
-    state: z.enum(["open", "draft", "merged", "closed"]).nullable(),
-  })
-  .strict();
-export type ThreadPullRequest = z.infer<typeof threadPullRequestSchema>;
+export const pullRequestFactsSchema = z.object({
+  title: z.string(),
+  state: z.enum(["open", "merged", "closed"]),
+  draft: z.boolean(),
+  mergeable: z.boolean().nullable(),
+  checks: z
+    .object({
+      total: z.number().int().nonnegative(),
+      passed: z.number().int().nonnegative(),
+      pending: z.number().int().nonnegative(),
+      failing: z.array(z.string()),
+    })
+    .nullable(),
+  review: z.enum(["changes_requested", "review_requested", "approved"]).nullable(),
+  head: z.string().nullable(),
+  base: z.string().nullable(),
+  mergedAt: z.string().nullable(),
+  additions: z.number().int().nullable(),
+  deletions: z.number().int().nullable(),
+}) satisfies z.ZodType<PullRequestFacts>;
+const pullRequestEntrySchema = z.object({
+  url: z.string(),
+  repo: z.string(),
+  number: z.number().int(),
+  facts: pullRequestFactsSchema.nullable(),
+}) satisfies z.ZodType<PullRequestEntry>;
+const threadPullRequestsSchema = z.object({
+  entries: z.array(pullRequestEntrySchema),
+  scanned: z.boolean(),
+  scanFailed: z.boolean(),
+}) satisfies z.ZodType<ThreadPullRequests>;
 
 export const ownedPortTargetSchema = z.object({
   port: z.number().int().min(1).max(65535),
@@ -250,9 +274,10 @@ export const bbSidebarRpcContract = defineRpcContract({
     input: z.object({ environmentIds: z.array(z.string().trim().min(1).max(255)).min(1).max(500) }).strict(),
     output: portSnapshotSchema,
   },
-  getThreadPullRequests: {
-    input: threadIdSchema.strict(),
-    output: z.object({ pullRequests: z.array(threadPullRequestSchema) }).strict(),
+  getPullRequests: {
+    input: z.object({ keys: z.array(z.string().trim().min(1).max(255)).min(1).max(200) }).strict(),
+    output: z.record(z.string(), threadPullRequestsSchema),
+    keyTags: (key) => [pullRequestsTag(key)],
   },
   getThreadExecutionDetails: {
     input: threadIdSchema.strict(),

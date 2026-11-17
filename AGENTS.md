@@ -31,6 +31,14 @@ live again). Snoozed, Parked and Inactive-shelf threads stay live.
   `useLifecycle(threads, lifecycleRows)` classifies.
 - `RateLimitsProvider` and `OpenPortsProvider` poll live threads only. Ports
   go by workspace: one shared with a live thread is still polled.
+- Pull requests follow who is looking: a live row on screen holds the
+  `getPullRequests` keyed read for its thread (`useThreadPullRequests` in
+  `src/bb-sdk.ts`, through `PullRequestRail.tsx`), and bb's
+  `experimental_whileWatched` tells `server-pull-requests` which threads are
+  watched. Only those are scanned and refreshed. A Settled row mounts no
+  read; its hover card does, which is the on-demand lookup. Rows mount the
+  read only once lifecycle rows have loaded (`lifecycleLoaded` in
+  `InboxContext`), since before that a thread may still turn out Settled.
 - `getOpenPorts` takes `{ environmentIds }` (1-500, strict) and rejects `{}`;
   the app sends live workspaces and splits longer lists.
 - Server: `server-policy` passes (run by the 5-minute `auto-settle` schedule,
@@ -55,7 +63,7 @@ live again). Snoozed, Parked and Inactive-shelf threads stay live.
   Flat `src/server-*.ts` modules share `ServerContext` explicitly.
   Their other supporting Node modules are `port-scan`, `auto-title`,
   `regenerate-title`, `port-discovery`, `thread-ports`,
-  `thread-pull-requests`, and `thread-tasks`, all under `src/`.
+  `pull-request-lookup`, and `thread-tasks`, all under `src/`.
   Node/SDK server or host APIs are allowed. These modules must not import React,
   TSX, browser `.ts` modules, `use*` hooks, `lib/**`, or `components/**`, even
   for types. Pure settings definitions and helpers live in shared
@@ -90,10 +98,21 @@ status blocks park, snooze and settle in the UI only (`useLifecycle.ts`).
 Pin to the SDK the latest stable bb-app ships (the bump pull request below
 does it); migrate experimental_* breaks through `src/bb-sdk.ts`. The minimum
 host is `engines.bb` with `engines.bbPluginSdk`, now bb 0.49.0 with SDK 0.6.132.
-Pull request data comes from the bundled GitHub PR Status plugin
-(`src/github-pr-status.ts`): rows through `useEnvironmentPullRequest` in
-`src/bb-sdk.ts`, and `plugins.callRpc` in `server-policy`. A failed or
-`unavailable` lookup is `unknown` and never settles a thread.
+A thread's pull requests come from the sidebar's own tracker
+(`server-pull-requests`): it scans the thread's event log for the PRs its
+commands created (`createdPullRequestUrls` in shared `pull-request-forges.ts`,
+GitHub `gh pr create` and Gitea `tea` alike), asks the thread's host for their
+facts (`pull-request-lookup.ts` runs `gh pr view` and `tea api` where the
+sign-in lives), keeps both in SQLite, and invalidates `pullRequestsTag(id)`
+when a thread's list changes. The wire carries facts, never a status: one
+shared derivation, `pullRequestStatus` and the `PR_STATUS` table in
+`pull-request-status.ts`, gives every surface its label, tone, rank and word.
+A host without `lookUpPullRequests` or a failed lookup leaves a PR's last
+facts in place (a never-read PR shows as "unknown"), never a half-described
+"ready". Auto-settle still reads the bundled GitHub PR Status plugin
+(`src/github-pr-status.ts`) through `plugins.callRpc` in `server-policy`,
+and the tracker uses it only to discover a worktree's branch PR. A failed or
+`unavailable` lookup there is `unknown` and never settles a thread.
 
 Keep the sidebar's own menus and named delete confirmation. Bound core actions
 own unpin, read state, rename requests, split, copy link, and thread-tree
@@ -141,6 +160,8 @@ Wired tests deliver invalidations through `flush()`; app tests use
 - `server-policy`: automatic settle passes and settings revisions.
 - `server-rate-limits`: provider-limit reads and scheduled Continue queue actions.
 - `server-rate-limit-details`: failed-turn classification and provider reset times.
+- `server-pull-requests`: the pull request tracker: scans, host lookups,
+  SQLite ledger, watched set and tick loop, per-thread invalidation.
 - `server-handlers`: RPC handlers assembled from the modules.
 - `server-cli`: the `bb sidebar` agent command over those handlers. Keep it to
   a few subcommands; each one adds a line to the `plugin-commands` skill.

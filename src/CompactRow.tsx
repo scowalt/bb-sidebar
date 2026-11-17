@@ -25,6 +25,7 @@ export function CompactRow({
   rowProps,
   linkProps,
   beforeContent,
+  rail,
   fadeContent = false,
   trailing,
 }: {
@@ -49,6 +50,7 @@ export function CompactRow({
     "draggable" | "aria-keyshortcuts" | "onPointerDown" | "onKeyDown" | "className"
   >;
   beforeContent?: ReactNode;
+  rail?: ReactNode;
   fadeContent?: boolean;
   trailing: ReactNode;
 }) {
@@ -152,6 +154,7 @@ export function CompactRow({
         />
       </span>
       {trailing}
+      {rail}
     </div>
   );
 }
