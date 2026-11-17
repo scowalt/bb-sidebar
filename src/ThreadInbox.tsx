@@ -432,6 +432,7 @@ function ThreadInboxContent({
     sidebarSettings,
     snoozePresets,
     lifecycle,
+    lifecycleLoaded: lifecycleRows.loaded,
     childrenByParentId,
     activeThreadId,
     now,

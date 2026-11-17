@@ -31,6 +31,8 @@ interface InboxContextInputs {
   sidebarSettings: SidebarSettingsValues | null;
   snoozePresets: readonly ConfiguredSnoozePreset[];
   lifecycle: LifecycleApi;
+  /** Lifecycle rows have loaded, so a row's shelf is known. Start no per-row read before then. */
+  lifecycleLoaded: boolean;
   childrenByParentId: ReadonlyMap<string, readonly PluginSidebarThread[]>;
   activeThreadId: string | null;
   now: number;
@@ -56,6 +58,7 @@ export function useInboxContextValues({
   sidebarSettings,
   snoozePresets,
   lifecycle,
+  lifecycleLoaded,
   childrenByParentId,
   activeThreadId,
   now,
@@ -80,6 +83,7 @@ export function useInboxContextValues({
       sidebarSettings,
       snoozePresets,
       lifecycle,
+      lifecycleLoaded,
       childrenByParentId,
     }),
     [
@@ -90,6 +94,7 @@ export function useInboxContextValues({
       sidebarSettings,
       snoozePresets,
       lifecycle,
+      lifecycleLoaded,
       childrenByParentId,
     ],
   );
