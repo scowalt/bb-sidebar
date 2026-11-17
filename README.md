@@ -41,7 +41,7 @@ Use **Parent** in a thread's context menu to search threads in the same project,
 bb plugin install git:https://github.com/yusuf8834/bb-sidebar.git
 ```
 
-Requires bb 0.49.0 or later. Pull request badges and automatic settling read pull request status from bb's bundled GitHub PR Status plugin. While it is disabled, badges are hidden and threads with a workspace are not settled automatically.
+Requires bb 0.49.0 or later. The pull request rail under each live row lists the pull requests the thread created, on GitHub through `gh` and on Gitea through `tea`, read on the thread's own machine; a machine without those tools, or signed out of them, shows its pull requests as status unavailable. Automatic settling reads pull request status from bb's bundled GitHub PR Status plugin. While it is disabled, threads with a workspace are not settled automatically.
 
 Then choose **BB Sidebar** under **Settings > Appearance > Sidebar**.
 
