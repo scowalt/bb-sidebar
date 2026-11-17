@@ -12,3 +12,5 @@ export const LIFECYCLE_TAG = "lifecycle";
 export const PROJECTS_TAG = "projects";
 /** Side chats from bb's Side chat plugin, which bb's own sidebar view leaves out. */
 export const SIDE_CHATS_TAG = "side-chats";
+/** One thread's pull requests, the `getPullRequests` keyed read. */
+export const pullRequestsTag = (threadId: string) => `pull-requests:${threadId}`;
