@@ -105,7 +105,7 @@
         "!src/regenerate-title.ts",
         "!src/port-discovery.ts",
         "!src/thread-ports.ts",
-        "!src/thread-pull-requests.ts",
+        "!src/pull-request-lookup.ts",
         "!src/thread-tasks.ts",
         "!src/project-colors.ts",
         "!src/title-generation-state.ts",
@@ -169,7 +169,7 @@
         "src/regenerate-title.ts",
         "src/port-discovery.ts",
         "src/thread-ports.ts",
-        "src/thread-pull-requests.ts",
+        "src/pull-request-lookup.ts",
         "src/thread-tasks.ts",
         "src/server.ts",
         "src/server-*.ts"
