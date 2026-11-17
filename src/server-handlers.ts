@@ -10,7 +10,7 @@ import type { createServerPolicy } from "./server-policy";
 import type { createServerSettleCleanup } from "./server-settle-cleanup";
 import type { createPortDiscovery } from "./port-discovery";
 import { autoArchiveSettingsChanged } from "./server-auto-archive";
-import type { createThreadPullRequests } from "./thread-pull-requests";
+import type { createServerPullRequests } from "./server-pull-requests";
 import type { createTitleRegenerator } from "./regenerate-title";
 import { SIDEBAR_SETTINGS_CHANNEL } from "./contract";
 import { INBOX_ORDER_TAG, SIDEBAR_SETTINGS_TAG } from "./rpc-tags";
@@ -27,13 +27,13 @@ export function createServerHandlers(
   cleanup: ReturnType<typeof createServerSettleCleanup>,
   threadPortActions: ReturnType<typeof createThreadPortActions>,
   getOpenPorts: ReturnType<typeof createPortDiscovery>,
-  threadPullRequests: ReturnType<typeof createThreadPullRequests>,
   regenerateTitle: ReturnType<typeof createTitleRegenerator>,
   modules: {
     icons: ReturnType<typeof createServerProjectIcons>;
     colors: ReturnType<typeof createServerProjectColors>;
     projects: ReturnType<typeof createServerProjectManagement>;
     settle: ReturnType<typeof createServerSettleActions>;
+    pullRequests: ReturnType<typeof createServerPullRequests>;
   },
 ) {
   const { readSidebarSettings, writeSidebarSettings } = settings;
@@ -65,7 +65,7 @@ export function createServerHandlers(
   const handlers = {
     getOpenPorts,
     getThreadPorts: threadPortActions.getThreadPorts,
-    getThreadPullRequests: threadPullRequests.getThreadPullRequests,
+    getPullRequests: ({ keys }) => modules.pullRequests.read(keys),
     async closeThreadPorts(input) {
       if (readOne(input.threadId)?.settledOverride !== "settled") {
         throw new Error("Thread is no longer settled");
@@ -285,7 +285,7 @@ export function createServerHandlers(
     ServerHandlers,
     | "getOpenPorts"
     | "getThreadPorts"
-    | "getThreadPullRequests"
+    | "getPullRequests"
     | "closeThreadPorts"
     | "stopWorkspacePort"
     | "getThreadExecutionDetails"

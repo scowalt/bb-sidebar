@@ -12,6 +12,8 @@ import { configuredSnoozePresetError } from "./lifecycle";
 import { MAX_INACTIVE_AFTER_HOURS, MIN_INACTIVE_AFTER_HOURS } from "./inactive";
 import { MAX_AUTO_SETTLE_AFTER_DAYS, MIN_AUTO_SETTLE_AFTER_DAYS } from "./auto-settle";
 import { MAX_AUTO_ARCHIVE_AFTER_DAYS, MIN_AUTO_ARCHIVE_AFTER_DAYS } from "./auto-archive";
+import { threadPullRequestsSchema } from "./pull-request-schemas";
+import { pullRequestsTag } from "./rpc-tags";
 export {
   SIDEBAR_SETTINGS_CHANNEL,
   PROJECT_ICONS_CHANNEL,
@@ -41,16 +43,6 @@ const portSnapshotSchema = z.object({
 });
 
 export type PortSnapshot = z.infer<typeof portSnapshotSchema>;
-
-export const threadPullRequestSchema = z
-  .object({
-    url: z.string(),
-    number: z.number().int(),
-    title: z.string().nullable(),
-    state: z.enum(["open", "draft", "merged", "closed"]).nullable(),
-  })
-  .strict();
-export type ThreadPullRequest = z.infer<typeof threadPullRequestSchema>;
 
 export const ownedPortTargetSchema = z.object({
   port: z.number().int().min(1).max(65535),
@@ -266,9 +258,10 @@ export const bbSidebarRpcContract = defineRpcContract({
     input: z.object({ environmentIds: z.array(z.string().trim().min(1).max(255)).min(1).max(500) }).strict(),
     output: portSnapshotSchema,
   },
-  getThreadPullRequests: {
-    input: threadIdSchema.strict(),
-    output: z.object({ pullRequests: z.array(threadPullRequestSchema) }).strict(),
+  getPullRequests: {
+    input: z.object({ keys: z.array(z.string().trim().min(1).max(255)).min(1).max(200) }).strict(),
+    output: z.record(z.string(), threadPullRequestsSchema),
+    keyTags: (key) => [pullRequestsTag(key)],
   },
   getThreadExecutionDetails: {
     input: threadIdSchema.strict(),

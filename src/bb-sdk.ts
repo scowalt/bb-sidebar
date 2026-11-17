@@ -14,16 +14,13 @@ import type {
   experimental_PluginRpcCallError,
 } from "@get-bb/plugin-sdk/app";
 import type { bbSidebarRpcContract } from "./contract";
-import {
-  GITHUB_PR_STATUS_PLUGIN_ID,
-  type EnvironmentPullRequest,
-  type EnvironmentPullRequestRow,
-} from "./github-pr-status";
+import type { ThreadPullRequests } from "./pull-request-status";
 import {
   INBOX_ORDER_TAG,
   LIFECYCLE_TAG,
   PROJECT_COLORS_TAG,
   PROJECTS_TAG,
+  pullRequestsTag,
   SIDE_CHATS_TAG,
   SIDEBAR_SETTINGS_TAG,
 } from "./rpc-tags";
@@ -52,9 +49,9 @@ export async function countDeleteCascade(sdk: ReturnType<typeof useSdk>, threadI
   return threads[0]?.cascadeThreadIds.length ?? 0;
 }
 
-// The browser bundle stays free of zod, so the GitHub PR Status contract uses
+// The browser bundle stays free of zod, so the sidebar's read contracts use
 // hand-written Standard Schemas. bb validates only the input against them;
-// rows arrive as the plugin sent them.
+// rows arrive as the server sent them.
 function schema<T>(validate: (value: unknown) => value is T): StandardSchemaV1<T> {
   return {
     "~standard": {
@@ -65,35 +62,28 @@ function schema<T>(validate: (value: unknown) => value is T): StandardSchemaV1<T
   };
 }
 
-const githubPrStatusContract = {
-  pullRequests: {
-    input: schema(
-      (value): value is { keys: string[] } =>
-        typeof value === "object" &&
-        value !== null &&
-        Array.isArray((value as { keys?: unknown }).keys) &&
-        (value as { keys: unknown[] }).keys.every((key) => typeof key === "string"),
-    ),
-    output: schema(
-      (value): value is Record<string, EnvironmentPullRequestRow> => typeof value === "object" && value !== null,
-    ),
+const isKeysInput = (value: unknown): value is { keys: string[] } =>
+  typeof value === "object" &&
+  value !== null &&
+  Array.isArray((value as { keys?: unknown }).keys) &&
+  (value as { keys: unknown[] }).keys.every((key) => typeof key === "string");
+
+const sidebarKeyedReads = {
+  getPullRequests: {
+    input: schema(isKeysInput),
+    output: schema((value): value is Record<string, ThreadPullRequests> => typeof value === "object" && value !== null),
+    keyTags: (key: string) => [pullRequestsTag(key)],
   },
 } satisfies PluginRpcContract;
 
-/**
- * The PR for an environment's checked-out branch, from the bundled GitHub PR
- * Status plugin. A query error, no PR, an unavailable machine, and a disabled
- * plugin all show nothing.
- */
-export function useEnvironmentPullRequest(environmentId: string | null): EnvironmentPullRequest | null {
+export function useThreadPullRequests(threadId: string, enabled: boolean): ThreadPullRequests | undefined {
   const { data } = experimental_useRpcKeyedQuery({
-    pluginId: GITHUB_PR_STATUS_PLUGIN_ID,
-    contract: githubPrStatusContract,
-    method: "pullRequests",
-    keys: environmentId ? [environmentId] : [],
+    contract: sidebarKeyedReads,
+    method: "getPullRequests",
+    keys: enabled ? [threadId] : [],
+    select: (rows) => rows[threadId],
   });
-  const row = environmentId ? data?.[environmentId] : undefined;
-  return row?.outcome === "available" ? row.pullRequest : null;
+  return data;
 }
 
 type SidebarRpc = typeof bbSidebarRpcContract;

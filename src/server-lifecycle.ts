@@ -367,6 +367,54 @@ export function createServerLifecycle(ctx: ServerContext) {
     });
   };
 
+  const loadThreadsWithAncestors = async (threadIds: readonly string[]) => {
+    const byId = new Map<string, CleanupThread>();
+    const asked = new Set<string>();
+    let wanted = [...new Set(threadIds)];
+    while (wanted.length) {
+      for (const id of wanted) asked.add(id);
+      // bb takes at most 200 ids per call.
+      for (let start = 0; start < wanted.length; start += 200) {
+        const page = await ctx.bb.sdk.threads.list({
+          threadIds: wanted.slice(start, start + 200),
+          archived: false,
+          includeHidden: true,
+          limit: 200,
+        });
+        for (const thread of page) {
+          if (thread.archivedAt === null && thread.deletedAt === null) byId.set(thread.id, thread);
+        }
+      }
+      wanted = [...byId.values()].flatMap((thread) =>
+        thread.parentThreadId !== null && !asked.has(thread.parentThreadId) ? [thread.parentThreadId] : [],
+      );
+    }
+    return [...byId.values()];
+  };
+
+  const describeThreads = async (threadIds: readonly string[], now = Date.now()) => {
+    const threads = await loadThreadsWithAncestors(threadIds);
+    const byId = new Map(threads.map((thread) => [thread.id, thread] as const));
+    const rowIds = shelfRowIds(threads);
+    const facts = new Map<
+      string,
+      { settled: boolean; environmentId: string | null; hostId: string | null; isWorktree: boolean }
+    >();
+    for (const threadId of threadIds) {
+      const thread = byId.get(threadId);
+      if (!thread) continue;
+      const top = byId.get(rowIds.get(threadId) ?? threadId) ?? thread;
+      const shelf = resolveRowShelf(readOne(top.id) ?? undefined, threadSignals(top), now, top.pinnedAt !== null);
+      facts.set(threadId, {
+        settled: shelf === "settled",
+        environmentId: thread.environmentId,
+        hostId: thread.environmentHostId,
+        isWorktree: thread.environmentIsWorktree === true,
+      });
+    }
+    return facts;
+  };
+
   // Settle wrote only the root's row before it covered whole trees, and a
   // child archived when its tree settled came back from the archive without
   // one. Repair those trees once.
@@ -424,6 +472,7 @@ export function createServerLifecycle(ctx: ServerContext) {
     loadSettleTree,
     backfillSettledChildRows,
     settleUnarchivedTree,
+    describeThreads,
   };
 }
 

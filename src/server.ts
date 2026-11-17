@@ -4,7 +4,7 @@ import { bbSidebarRpcContract } from "./contract";
 import { INBOX_ORDER_TAG } from "./rpc-tags";
 import { createPortDiscovery } from "./port-discovery";
 import { createThreadPortActions } from "./thread-ports";
-import { createThreadPullRequests } from "./thread-pull-requests";
+import { createServerPullRequests, PULL_REQUESTS_MIGRATIONS } from "./server-pull-requests";
 import { createTitleRegenerator } from "./regenerate-title";
 import { AUTO_TITLE_RECOVERY_MIGRATION, createAutoTitleRecovery } from "./auto-title";
 import {
@@ -121,6 +121,7 @@ const migrations = [
   LIFECYCLE_BACKFILLS_MIGRATION,
   ...INSTALL_DEFAULTS_MIGRATIONS,
   `ALTER TABLE thread_lifecycle ADD COLUMN snooze_pending INTEGER NOT NULL DEFAULT 0`,
+  ...PULL_REQUESTS_MIGRATIONS,
   SETTLE_QUIET_THREADS_INSTALL_DEFAULT_MIGRATION,
   AUTO_ARCHIVE_MIGRATION,
   AUTO_ARCHIVE_RULE_MIGRATION,
@@ -132,8 +133,6 @@ export default async function plugin(bb: BbPluginApi) {
 
   const threadPortActions = createThreadPortActions(ctx.bb);
 
-  const threadPullRequests = createThreadPullRequests(ctx.bb);
-
   const regenerateTitle = createTitleRegenerator(ctx.bb);
   ctx.bb.storage.migrate(ctx.db, migrations);
   createAutoTitleRecovery(ctx.bb, regenerateTitle);
@@ -142,6 +141,7 @@ export default async function plugin(bb: BbPluginApi) {
   const colors = createServerProjectColors(ctx);
   const projects = createServerProjectManagement(ctx, icons);
   const lifecycle = createServerLifecycle(ctx);
+  const pullRequests = createServerPullRequests(ctx, { describeThreads: lifecycle.describeThreads });
   const cleanup = createServerSettleCleanup(ctx, lifecycle, threadPortActions, getOpenPorts);
   const settle = createServerSettleActions(ctx, lifecycle, cleanup);
   const policy = createServerPolicy(ctx, lifecycle, settings, cleanup, threadPortActions);
@@ -153,9 +153,8 @@ export default async function plugin(bb: BbPluginApi) {
     cleanup,
     threadPortActions,
     getOpenPorts,
-    threadPullRequests,
     regenerateTitle,
-    { icons, colors, projects, settle },
+    { icons, colors, projects, settle, pullRequests },
   );
   const { resolveProjectIcon } = icons;
   const { wakeAncestors, clearSettlingState, clear, settleUnarchivedTree } = lifecycle;
@@ -197,6 +196,9 @@ export default async function plugin(bb: BbPluginApi) {
   const rateLimits = createServerRateLimits(ctx, lifecycle);
   const sideChats = createServerSideChats(ctx, lifecycle);
   ctx.bb.rpc.register(bbSidebarRpcContract, { ...handlers, ...rateLimits, ...sideChats });
+  ctx.bb.rpc.experimental_whileWatched("getPullRequests", (read, signal) => {
+    if ("key" in read) pullRequests.watch(read.key, signal);
+  });
   ctx.bb.cli.register(createServerCli(lifecycle, handlers, rateLimits.getScheduledSends));
   // New or resumed child work reopens the ancestor path, keeping its existing
   // sidebar nesting reachable. Siblings retain their own settled state.
@@ -206,6 +208,7 @@ export default async function plugin(bb: BbPluginApi) {
 
   ctx.bb.events.on("thread.active", async ({ thread }) => {
     clearSettlingState(thread.id);
+    pullRequests.turnStarted(thread.id);
     await wakeAncestors(thread);
   });
 
@@ -222,10 +225,12 @@ export default async function plugin(bb: BbPluginApi) {
   // A snooze set during the thread's own turn starts once that turn ends,
   // and releases the runtime the way a snooze of an idle thread does.
   ctx.bb.events.on("thread.idle", async ({ thread }) => {
+    pullRequests.turnEnded(thread.id);
     if (lifecycle.startPendingSnooze(thread)) await cleanup.reclaimThreadResources(thread.id);
   });
 
   ctx.bb.events.on("thread.failed", ({ thread }) => {
+    pullRequests.turnEnded(thread.id);
     lifecycle.dropPendingSnooze(thread.id);
   });
 
@@ -233,7 +238,7 @@ export default async function plugin(bb: BbPluginApi) {
   // thread reusing the id, and stale rows accumulate otherwise.
   ctx.bb.events.on("thread.deleted", ({ thread }) => {
     clear(thread.id);
-    threadPullRequests.forgetThread(thread.id);
+    pullRequests.forget(thread.id);
     const removed = ctx.db.prepare(`DELETE FROM inbox_order WHERE thread_id = ?`).run(thread.id);
     if (removed.changes > 0) {
       ctx.bb.rpc.experimental_invalidate([INBOX_ORDER_TAG]);
