@@ -199,18 +199,30 @@ describe("host pull request lookup", () => {
     ]);
   });
 
+  const statusPage = (statuses: Array<{ context: string; status: string }>, total = statuses.length) => ({
+    state: statuses.some((entry) => entry.status === "failure") ? "failure" : "success",
+    sha: "abc123",
+    total_count: total,
+    statuses,
+  });
+  const passing = (count: number, from = 1) =>
+    Array.from({ length: count }, (_, index) => ({ context: `ci / step ${from + index}`, status: "success" }));
+  const comments = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      id: index + 1,
+      state: "COMMENT",
+      submitted_at: `2026-11-01T00:00:${String(index).padStart(2, "0")}Z`,
+      user: { login: "lore-bot" },
+    }));
+
   it("reads an open Gitea PR with three tea calls through the login for its origin", async () => {
     tea({
       "repos/o/r/pulls/5": pull({ requested_reviewers: [{ login: "reviewer" }] }),
-      "repos/o/r/commits/abc123/status": {
-        state: "pending",
-        total_count: 2,
-        statuses: [
-          { context: "ci / build", status: "success" },
-          { context: "ci / test", status: "pending" },
-        ],
-      },
-      "repos/o/r/pulls/5/reviews": [],
+      "repos/o/r/commits/abc123/status?limit=50&page=1": statusPage([
+        { context: "ci / build", status: "success" },
+        { context: "ci / test", status: "pending" },
+      ]),
+      "repos/o/r/pulls/5/reviews?limit=50&page=1": [],
     });
     const { pullRequests } = await harness.experimental_call("lookUpPullRequests", {
       urls: ["https://git.example.com/o/r/pulls/5"],
@@ -227,9 +239,67 @@ describe("host pull request lookup", () => {
     expect(teaCalls()).toEqual([
       "logins list --output json",
       "api --login work repos/o/r/pulls/5",
-      "api --login work repos/o/r/commits/abc123/status",
-      "api --login work repos/o/r/pulls/5/reviews",
+      "api --login work repos/o/r/commits/abc123/status?limit=50&page=1",
+      "api --login work repos/o/r/pulls/5/reviews?limit=50&page=1",
     ]);
+  });
+
+  it("reads every page of statuses and reviews, so a failure or review past the first page counts", async () => {
+    tea({
+      "repos/o/r/pulls/5": pull(),
+      // Gitea's own `state` on page one says success; the failure is on page two.
+      "repos/o/r/commits/abc123/status?limit=50&page=1": statusPage(passing(50), 52),
+      "repos/o/r/commits/abc123/status?limit=50&page=2": statusPage(
+        [...passing(1, 51), { context: "ci / late", status: "failure" }],
+        52,
+      ),
+      "repos/o/r/pulls/5/reviews?limit=50&page=1": comments(50),
+      "repos/o/r/pulls/5/reviews?limit=50&page=2": [
+        { id: 51, state: "REQUEST_CHANGES", submitted_at: "2026-11-02T00:00:00Z", user: { login: "ana" } },
+      ],
+    });
+    const { pullRequests } = await harness.experimental_call("lookUpPullRequests", {
+      urls: ["https://git.example.com/o/r/pulls/5"],
+    });
+    expect(pullRequests).toEqual([
+      found({
+        checks: { total: 52, passed: 51, pending: 0, failing: ["ci / late"] },
+        review: "changes_requested",
+      }),
+    ]);
+    expect(teaCalls().filter((call) => call.includes("page=3"))).toEqual([]);
+  });
+
+  it("fails the PR when a later page fails or the pages never end", async () => {
+    tea({
+      "repos/o/r/pulls/5": pull(),
+      "repos/o/r/commits/abc123/status?limit=50&page=1": statusPage(passing(50), 60),
+      "repos/o/r/commits/abc123/status?limit=50&page=2": Object.assign(new Error("tea failed"), {
+        stderr: "connection reset",
+      }),
+      "repos/o/r/pulls/5/reviews?limit=50&page=1": [],
+    });
+    expect(
+      (await harness.experimental_call("lookUpPullRequests", { urls: ["https://git.example.com/o/r/pulls/5"] }))
+        .pullRequests,
+    ).toEqual([{ url: "https://git.example.com/o/r/pulls/5", outcome: "failed", reason: "error" }]);
+
+    mocks.run.mockReset();
+    tea({
+      "repos/o/r/pulls/6": pull(),
+      "repos/o/r/commits/abc123/status?limit=50&page=1": statusPage([]),
+      ...Object.fromEntries(
+        Array.from({ length: 12 }, (_, index) => [
+          `repos/o/r/pulls/6/reviews?limit=50&page=${index + 1}`,
+          comments(50),
+        ]),
+      ),
+    });
+    expect(
+      (await harness.experimental_call("lookUpPullRequests", { urls: ["https://git.example.com/o/r/pulls/6"] }))
+        .pullRequests,
+    ).toEqual([{ url: "https://git.example.com/o/r/pulls/6", outcome: "failed", reason: "error" }]);
+    expect(teaCalls().filter((call) => call.includes("/reviews?"))).toHaveLength(10);
   });
 
   it("spends one call on a merged PR and shares the login listing across a batch", async () => {
@@ -251,8 +321,10 @@ describe("host pull request lookup", () => {
   it("fails an open PR whose status or reviews call failed rather than describing half of it", async () => {
     tea({
       "repos/o/r/pulls/8": pull(),
-      "repos/o/r/commits/abc123/status": Object.assign(new Error("tea failed"), { stderr: "connection reset" }),
-      "repos/o/r/pulls/8/reviews": [],
+      "repos/o/r/commits/abc123/status?limit=50&page=1": Object.assign(new Error("tea failed"), {
+        stderr: "connection reset",
+      }),
+      "repos/o/r/pulls/8/reviews?limit=50&page=1": [],
     });
     const { pullRequests } = await harness.experimental_call("lookUpPullRequests", {
       urls: ["https://git.example.com/o/r/pulls/8"],

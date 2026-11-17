@@ -16,6 +16,9 @@ const COMMAND_TIMEOUT_MS = 8_000;
 const OVERALL_DEADLINE_MS = 25_000;
 const WORKERS = 6;
 const LOGINS_TTL_MS = 5 * 60_000;
+/** Gitea lists 30 per page by default; statuses and reviews are read in full, up to the cap. */
+const PAGE_SIZE = 50;
+const MAX_PAGES = 10;
 // GUI-launched daemons often miss the shell PATH where Homebrew installs gh and tea.
 const PATH = [
   process.env.PATH,
@@ -134,6 +137,33 @@ async function teaJson(login: string, path: string, signal: AbortSignal): Promis
   return value;
 }
 
+/**
+ * Every item of a paginated `tea api` list: pages until one comes back short
+ * or the reported total is reached. Past MAX_PAGES the PR fails rather than
+ * being read in part.
+ */
+async function teaList(
+  login: string,
+  path: string,
+  signal: AbortSignal,
+  page: (value: unknown) => { items: unknown[]; total: number | null } | null,
+): Promise<unknown[]> {
+  const items: unknown[] = [];
+  for (let number = 1; number <= MAX_PAGES; number++) {
+    const read = page(await teaJson(login, `${path}?limit=${PAGE_SIZE}&page=${number}`, signal));
+    if (!read) throw new LookupFailure("error", `tea api ${path} printed no list`);
+    items.push(...read.items);
+    if (read.items.length < PAGE_SIZE || (read.total !== null && items.length >= read.total)) return items;
+  }
+  throw new LookupFailure("error", `tea api ${path} lists more than ${MAX_PAGES * PAGE_SIZE} entries`);
+}
+
+const statusPage = (value: unknown) =>
+  isRecord(value) && Array.isArray(value.statuses)
+    ? { items: value.statuses, total: typeof value.total_count === "number" ? value.total_count : null }
+    : null;
+const reviewPage = (value: unknown) => (Array.isArray(value) ? { items: value, total: null } : null);
+
 async function lookUpGitea(identity: PullRequestIdentity, signal: AbortSignal): Promise<PullRequestFacts> {
   const login = (await teaLogins(signal)).find((candidate) => candidate.origin === identity.origin);
   // Never ask the default login about a host it was not made for.
@@ -146,13 +176,14 @@ async function lookUpGitea(identity: PullRequestIdentity, signal: AbortSignal): 
   // A merged or closed PR needs neither checks nor reviews. An open one needs
   // both, and either failing fails the PR.
   if (!terminal && !sha) throw new LookupFailure("error", "Gitea named no head commit for an open pull request");
-  const [status, reviews] = terminal
+  // The combined state is derived from every status, not read from a page's `state`.
+  const [statuses, reviews] = terminal
     ? [null, null]
     : await Promise.all([
-        teaJson(login.name, `${base}/commits/${sha}/status`, signal),
-        teaJson(login.name, `${base}/pulls/${identity.number}/reviews`, signal),
+        teaList(login.name, `${base}/commits/${sha}/status`, signal, statusPage),
+        teaList(login.name, `${base}/pulls/${identity.number}/reviews`, signal, reviewPage),
       ]);
-  const facts = parseGiteaFacts(pull, status, reviews);
+  const facts = parseGiteaFacts(pull, statuses && { statuses }, reviews);
   if (!facts) throw new LookupFailure("error", "Gitea returned no pull request");
   return facts;
 }
