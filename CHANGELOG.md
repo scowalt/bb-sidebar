@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **New default settings.** A new install, and any install that has never saved its sidebar settings, now starts with shelves docked to the bottom, child threads listed newest first with their provider icons instead of colour circles, and project colors on with no stripes: project names are coloured and rows have no stripe. "Dock shelves to the bottom" is no longer marked experimental. "Settle quiet threads" is now off for new installs. An install that already had sidebar data keeps settling quiet threads, as with "Settle finished pull requests" when that became opt-in: the switch stays on until you turn it off, and saving any other setting keeps it on. Saved settings keep their values.
+
+## [0.3.13] - 2026-11-17
+
 ### Added
 
 - **Side chats show under the thread they came from.** bb's Side chat plugin keeps each side chat as a hidden thread, which bb's thread list and the sidebar left out. The sidebar now lists each side chat you have written in as a child of the thread it was opened from, named "Side chat - " and its title, or the message it replies to when it has none (a trailing "(fork)" is left off). The child list, its badge and the hover card's subthreads include it. Side chats nobody wrote in, and those of a settled thread, stay out. Settings → Child threads → "Show side chats as children" is on by default; off, the sidebar does not look them up. Opening one still opens the side chat as a full thread, and actions on the parent (such as Park children) include its side chats.
@@ -11,10 +17,6 @@
 ### Changed
 
 - **Pull request status is read where the thread runs.** The sidebar's server keeps each watched thread's pull requests in its database and asks the thread's machine for their status with `gh pr view` and `tea api`, so the rails paint from the last known state as soon as the sidebar opens and running checks are rechecked about every 20 seconds. A machine without `gh` or `tea`, or one running an older sidebar plugin, shows those pull requests in grey as "Status unavailable" rather than as ready.
-
-### Changed
-
-- **New default settings.** A new install, and any install that has never saved its sidebar settings, now starts with shelves docked to the bottom, child threads listed newest first with their provider icons instead of colour circles, and project colors on with no stripes: project names are coloured and rows have no stripe. "Dock shelves to the bottom" is no longer marked experimental. "Settle quiet threads" is now off for new installs. An install that already had sidebar data keeps settling quiet threads, as with "Settle finished pull requests" when that became opt-in: the switch stays on until you turn it off, and saving any other setting keeps it on. Saved settings keep their values.
 
 ## [0.3.12] - 2026-11-16
 
