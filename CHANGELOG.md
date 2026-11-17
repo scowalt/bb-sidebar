@@ -2,16 +2,6 @@
 
 ## [Unreleased]
 
-### Added
-
-- **Side chats show under the thread they came from.** bb's Side chat plugin keeps each side chat as a hidden thread, which bb's thread list and the sidebar left out. The sidebar now lists each side chat you have written in as a child of the thread it was opened from, named "Side chat - " and its title, or the message it replies to when it has none (a trailing "(fork)" is left off). The child list, its badge and the hover card's subthreads include it. Side chats nobody wrote in, and those of a settled thread, stay out. Settings → Child threads → "Show side chats as children" is on by default; off, the sidebar does not look them up. Opening one still opens the side chat as a full thread, and actions on the parent (such as Park children) include its side chats.
-- **Every pull request a thread opened, at a glance.** A live row now draws a thin rail under it with one segment per pull request the thread created, in progress order: merged ones first in violet, then open ones coloured by what they need (red for failed checks, conflicts or requested changes; amber, pulsing, while checks run; blue while awaiting review; green when ready; muted for drafts), then closed ones in grey. The end of the metadata line shows `merged/total`, in the colour of the most urgent open pull request, with every pull request's status in its tooltip; a thread with one pull request keeps the `#N` link. Compact rows and Parked and Snoozed rows get the rail too. Pull requests on Gitea, created with `tea`, count alongside GitHub ones created with `gh`. Settled rows show no rail and are never polled.
-- **The hover card tells the pull requests apart.** It opens with "m of t merged", the same bar, and the counts in words, then lists the open pull requests first, nesting one under the pull request its branch builds on, with the failing check's name, how many checks are still running or have passed, and the lines changed. Merged and closed pull requests fold behind "Show 3 merged, 1 closed" while something is still open.
-
-### Changed
-
-- **Pull request status is read where the thread runs.** The sidebar's server keeps each watched thread's pull requests in its database and asks the thread's machine for their status with `gh pr view` and `tea api`, so the rails paint from the last known state as soon as the sidebar opens and running checks are rechecked about every 20 seconds. A machine without `gh` or `tea`, or one running an older sidebar plugin, shows those pull requests in grey as "Status unavailable" rather than as ready.
-
 ### Changed
 
 - **New default settings.** A new install, and any install that has never saved its sidebar settings, now starts with shelves docked to the bottom, child threads listed newest first with their provider icons instead of colour circles, and project colors on with no stripes: project names are coloured and rows have no stripe. "Dock shelves to the bottom" is no longer marked experimental. "Settle quiet threads" is now off for new installs. An install that already had sidebar data keeps settling quiet threads, as with "Settle finished pull requests" when that became opt-in: the switch stays on until you turn it off, and saving any other setting keeps it on. Saved settings keep their values.
@@ -23,6 +13,18 @@
 ### Fixed
 
 - **The agent's own port is no longer listed as a workspace port.** Claude Code listens on a local port for the network proxy of its command sandbox, and bb starts it in the thread's workspace, so the sidebar listed that port under "Workspace ports" and put the port icon on the row, as if the thread had started a server. The stop button in the hover card, Clean in the Settled shelf and "Close ports" after a settle then stopped the agent itself, and the sidebar never settled the thread for you while its agent was loaded, whichever automatic-settle rule applied. The port scan now leaves out the process bb started as the thread's agent, for every provider. Servers the agent starts are still listed and can still be stopped. Google Antigravity's agent opens a second port from a helper process, which is still listed.
+
+## [0.3.13] - 2026-11-17
+
+### Added
+
+- **Side chats show under the thread they came from.** bb's Side chat plugin keeps each side chat as a hidden thread, which bb's thread list and the sidebar left out. The sidebar now lists each side chat you have written in as a child of the thread it was opened from, named "Side chat - " and its title, or the message it replies to when it has none (a trailing "(fork)" is left off). The child list, its badge and the hover card's subthreads include it. Side chats nobody wrote in, and those of a settled thread, stay out. Settings → Child threads → "Show side chats as children" is on by default; off, the sidebar does not look them up. Opening one still opens the side chat as a full thread, and actions on the parent (such as Park children) include its side chats.
+- **Every pull request a thread opened, at a glance.** A live row now draws a thin rail under it with one segment per pull request the thread created, in progress order: merged ones first in violet, then open ones coloured by what they need (red for failed checks, conflicts or requested changes; amber, pulsing, while checks run; blue while awaiting review; green when ready; muted for drafts), then closed ones in grey. The end of the metadata line shows `merged/total`, in the colour of the most urgent open pull request, with every pull request's status in its tooltip; a thread with one pull request keeps the `#N` link. Compact rows and Parked and Snoozed rows get the rail too. Pull requests on Gitea, created with `tea`, count alongside GitHub ones created with `gh`. Settled rows show no rail and are never polled.
+- **The hover card tells the pull requests apart.** It opens with "m of t merged", the same bar, and the counts in words, then lists the open pull requests first, nesting one under the pull request its branch builds on, with the failing check's name, how many checks are still running or have passed, and the lines changed. Merged and closed pull requests fold behind "Show 3 merged, 1 closed" while something is still open.
+
+### Changed
+
+- **Pull request status is read where the thread runs.** The sidebar's server keeps each watched thread's pull requests in its database and asks the thread's machine for their status with `gh pr view` and `tea api`, so the rails paint from the last known state as soon as the sidebar opens and running checks are rechecked about every 20 seconds. A machine without `gh` or `tea`, or one running an older sidebar plugin, shows those pull requests in grey as "Status unavailable" rather than as ready.
 
 ## [0.3.12] - 2026-11-16
 
