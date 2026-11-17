@@ -25,11 +25,15 @@ export interface ThreadLifecycleRow {
    * ends, so the turn's final reply does not count as attention since.
    */
   snoozePending?: boolean;
+  /** Threads whose question the user put off with this snooze; only others wake it. */
+  snoozedQuestionThreadIds?: readonly string[];
 }
 
 /** The activity signals that outrank a user's parking decision. */
 export interface ThreadActivitySignals {
   hasPendingInteraction: boolean;
+  /** This thread and its descendants whose own question is pending, when known. */
+  askingThreadIds?: readonly string[];
   /** A message waits to be sent, or one failed to send. */
   hasQueuedWork: boolean;
   /** Any live work: runtime, workflows, background agents, plan. */
@@ -42,13 +46,21 @@ export interface ThreadActivitySignals {
 export type ThreadShelf = "active" | "parked" | "snoozed" | "settled";
 type WakeReason = "timer" | "attention";
 
+/** Whether the thread asks something its snooze did not put off. */
+function asksSomethingNew(row: ThreadLifecycleRow | undefined, signals: ThreadActivitySignals): boolean {
+  if (!signals.hasPendingInteraction) return false;
+  const putOff = row?.snoozedUntil == null ? undefined : row.snoozedQuestionThreadIds;
+  if (!putOff?.length) return true;
+  return (signals.askingThreadIds ?? []).some((id) => !putOff.includes(id));
+}
+
 /**
  * Why a snoozed thread is back in the active inbox, if it has woken at all.
  *
  * The lifecycle row deliberately remains until acknowledgement. That makes
  * the Woke marker durable across reloads and gives every client the same
  * answer. A pending interaction is attention even if bb has not advanced the
- * rolled-up timestamp yet.
+ * rolled-up timestamp yet, unless the snooze was set over that question.
  */
 export function resolveWakeReason(
   row: ThreadLifecycleRow | undefined,
@@ -60,7 +72,7 @@ export function resolveWakeReason(
   }
 
   const wokeOnAttention =
-    signals.hasPendingInteraction || (row.snoozedAt !== null && signals.latestAttentionAt > row.snoozedAt);
+    asksSomethingNew(row, signals) || (row.snoozedAt !== null && signals.latestAttentionAt > row.snoozedAt);
   if (wokeOnAttention) return "attention";
   return row.snoozedUntil <= now ? "timer" : null;
 }
@@ -103,9 +115,13 @@ export function canSnooze(signals: ParkSignals, waitsOnlyOnScheduled: boolean): 
   return snoozeBlocker(signals, waitsOnlyOnScheduled) === null;
 }
 
-/** Why a snooze is refused, or null when it is allowed. Scheduled sends do not block it. */
+/** Why a snooze is refused, or null when allowed. Neither scheduled sends nor questions block it. */
 export function snoozeBlocker(signals: ParkSignals, waitsOnlyOnScheduled: boolean): ParkBlocker | null {
-  return parkBlocker({ ...signals, hasQueuedWork: signals.hasQueuedWork && !waitsOnlyOnScheduled });
+  return parkBlocker({
+    ...signals,
+    hasPendingInteraction: false,
+    hasQueuedWork: signals.hasQueuedWork && !waitsOnlyOnScheduled,
+  });
 }
 
 /**
@@ -219,7 +235,8 @@ export function canParkThread(thread: PluginSidebarThread): boolean {
  * Which shelf a thread belongs on right now.
  *
  * Order matters. Live work and a raised hand always win, so a parked thread
- * that starts working or asks a question comes straight back. Then snooze,
+ * that starts working or asks a question comes straight back; only a question
+ * the user snoozed stays put. Then snooze,
  * because a wake time is a stronger statement than a settle. Then settled.
  */
 export function resolveShelf(
@@ -228,7 +245,7 @@ export function resolveShelf(
   now: number,
 ): ThreadShelf {
   if (row === undefined) return "active";
-  if (!canPark(signals)) return "active";
+  if (!canPark({ ...signals, hasPendingInteraction: asksSomethingNew(row, signals) })) return "active";
 
   if (row.parkedAt != null) {
     return signals.latestAttentionAt > row.parkedAt ? "active" : "parked";
