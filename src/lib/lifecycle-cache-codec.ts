@@ -23,6 +23,9 @@ export function decodeLifecycleRows(input: unknown): ReadonlyMap<string, ThreadL
       !isNullableNumber(row.snoozedUntil) ||
       !isNullableNumber(row.snoozedAt) ||
       (row.snoozePending !== undefined && typeof row.snoozePending !== "boolean") ||
+      (row.snoozedQuestionThreadIds !== undefined &&
+        (!Array.isArray(row.snoozedQuestionThreadIds) ||
+          !row.snoozedQuestionThreadIds.every((id) => typeof id === "string"))) ||
       (row.settledOverride !== undefined &&
         row.settledOverride !== null &&
         row.settledOverride !== "active" &&
@@ -37,6 +40,7 @@ export function decodeLifecycleRows(input: unknown): ReadonlyMap<string, ThreadL
       snoozedUntil: row.snoozedUntil,
       snoozedAt: row.snoozedAt,
       snoozePending: row.snoozePending === true,
+      ...(row.snoozedQuestionThreadIds?.length ? { snoozedQuestionThreadIds: row.snoozedQuestionThreadIds } : {}),
     });
   }
   return pruneRows(rows);

@@ -73,7 +73,7 @@ describe("queued work that waits only on a scheduled send", () => {
     expect(canPark(queued)).toBe(false);
     expect(canSnooze(queued, false)).toBe(false);
     expect(canSnooze({ ...queued, isWorking: true }, true)).toBe(false);
-    expect(canSnooze({ ...queued, hasPendingInteraction: true }, true)).toBe(false);
+    expect(canSnooze({ ...queued, hasPendingInteraction: true }, true)).toBe(true);
   });
 
   it("keeps a live snooze on Snoozed until the send time", () => {
@@ -139,6 +139,37 @@ describe("resolveShelf", () => {
     expect(
       resolveShelf(row({ snoozedUntil: 5_000, snoozedAt: 900 }), { ...quiet, latestAttentionAt: 800 }, 1_000),
     ).toBe("snoozed");
+  });
+});
+
+describe("a snooze set over a question", () => {
+  const overQuestion = row({ snoozedUntil: 5_000, snoozedAt: 500, snoozedQuestionThreadIds: ["asker"] });
+  const asking = (...askingThreadIds: string[]) => ({ ...quiet, hasPendingInteraction: true, askingThreadIds });
+
+  it("may be set while the thread needs you, though Park may not", () => {
+    expect(canSnooze(asking("asker"), false)).toBe(true);
+    expect(canPark(asking("asker"))).toBe(false);
+  });
+
+  it("stays snoozed while the question it put off is pending", () => {
+    expect(resolveShelf(overQuestion, asking("asker"), 1_000)).toBe("snoozed");
+    expect(resolveWakeReason(overQuestion, asking("asker"), 1_000)).toBeNull();
+  });
+
+  it("wakes when another thread in the tree asks", () => {
+    expect(resolveShelf(overQuestion, asking("asker", "other"), 1_000)).toBe("active");
+    expect(resolveWakeReason(overQuestion, asking("asker", "other"), 1_000)).toBe("attention");
+  });
+
+  it("wakes on its timer, on new attention, and on work", () => {
+    expect(resolveWakeReason(overQuestion, asking("asker"), 6_000)).toBe("timer");
+    expect(resolveShelf(overQuestion, { ...asking("asker"), latestAttentionAt: 800 }, 1_000)).toBe("active");
+    expect(resolveShelf(overQuestion, { ...asking("asker"), isWorking: true }, 1_000)).toBe("active");
+  });
+
+  it("puts nothing off once the snooze is gone", () => {
+    const settled = { ...overQuestion, snoozedUntil: null, snoozedAt: null, settledAt: 500 };
+    expect(resolveShelf(settled, asking("asker"), 1_000)).toBe("active");
   });
 });
 

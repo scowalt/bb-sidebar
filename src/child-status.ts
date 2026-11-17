@@ -171,27 +171,36 @@ export function threadNeedsAttention(thread: PluginSidebarThread): boolean {
  * Walks up from each asking thread; archived ancestors and cycles stop it.
  */
 export function threadsWithAskingDescendants(threads: readonly PluginSidebarThread[]): ReadonlySet<string> {
-  return ancestorsOfAskingThreads(threads, threadAsksForInput);
+  const askers = askingThreadsByThread(threads, threadAsksForInput);
+  return new Set([...askers].filter(([id, ids]) => ids.some((asker) => asker !== id)).map(([id]) => id));
 }
 
 /**
- * The same walk over any thread shape, given what counts as asking. The
- * server's thread lists have no row indicator, so `bb sidebar list` asks with
- * `hasPendingInteraction` alone.
+ * For each thread, the asking threads among itself and its descendants, over
+ * any thread shape, given what counts as asking. The server's thread lists
+ * have no row indicator, so the server asks with `hasPendingInteraction`
+ * alone, and so does the app where it compares with the server's record.
  */
-export function ancestorsOfAskingThreads<
+export function askingThreadsByThread<
   T extends { readonly id: string; readonly parentThreadId: string | null; readonly isArchived?: boolean },
->(threads: readonly T[], asks: (thread: T) => boolean): ReadonlySet<string> {
-  const result = new Set<string>();
+>(threads: readonly T[], asks: (thread: T) => boolean): ReadonlyMap<string, readonly string[]> {
+  const result = new Map<string, string[]>();
+  const add = (id: string, asker: string) => {
+    const askers = result.get(id);
+    if (askers) askers.push(asker);
+    else result.set(id, [asker]);
+  };
   let byId: ReadonlyMap<string, T> | undefined;
   for (const thread of threads) {
-    if (thread.isArchived || thread.parentThreadId === null || !asks(thread)) continue;
+    if (thread.isArchived || !asks(thread)) continue;
+    add(thread.id, thread.id);
+    if (thread.parentThreadId === null) continue;
     byId ??= new Map(threads.map((candidate) => [candidate.id, candidate]));
     const visited = new Set([thread.id]);
     let parent = byId.get(thread.parentThreadId);
     while (parent && !parent.isArchived && !visited.has(parent.id)) {
       visited.add(parent.id);
-      result.add(parent.id);
+      add(parent.id, thread.id);
       parent = parent.parentThreadId === null ? undefined : byId.get(parent.parentThreadId);
     }
   }
