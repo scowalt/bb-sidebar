@@ -62,7 +62,9 @@ function mount({
       getPullRequests: (input) => {
         const { keys } = input as { keys: string[] };
         requested.push(keys);
-        return Object.fromEntries(keys.map((key) => [key, rows[key] ?? { entries: [], scanned: true }]));
+        return Object.fromEntries(
+          keys.map((key) => [key, rows[key] ?? { entries: [], scanned: true, scanFailed: false }]),
+        );
       },
     },
   });
@@ -79,6 +81,7 @@ describe("pull request rail", () => {
       rows: {
         thr_pr: {
           scanned: true,
+          scanFailed: false,
           entries: [
             entry(3, failing),
             merged(1, "2026-11-02T00:00:00Z"),
@@ -112,7 +115,9 @@ describe("pull request rail", () => {
   });
 
   it("links a single PR by number, with its title and status in the tooltip", async () => {
-    mount({ rows: { thr_pr: { scanned: true, entries: [entry(412, { review: "review_requested" })] } } });
+    mount({
+      rows: { thr_pr: { scanned: true, scanFailed: false, entries: [entry(412, { review: "review_requested" })] } },
+    });
     const badge = await screen.findByRole("link", { name: "#412" });
     expect(badge.getAttribute("href")).toBe("https://git.example.com/o/r/pulls/412");
     expect(badge.className).toContain("text-[color:var(--bb-sidebar-pr-review)]");
@@ -124,7 +129,11 @@ describe("pull request rail", () => {
   it("colors the count violet once everything is merged", async () => {
     mount({
       rows: {
-        thr_pr: { scanned: true, entries: [merged(1, "2026-11-01T00:00:00Z"), merged(2, "2026-11-02T00:00:00Z")] },
+        thr_pr: {
+          scanned: true,
+          scanFailed: false,
+          entries: [merged(1, "2026-11-01T00:00:00Z"), merged(2, "2026-11-02T00:00:00Z")],
+        },
       },
     });
     expect((await screen.findByText("2/2")).className).toContain("text-[color:var(--bb-sidebar-pr-merged)]");
@@ -142,7 +151,7 @@ describe("pull request rail", () => {
     const { observers, notify } = stubIntersectionObservers();
     const row = () => screen.getByRole("link", { name: "PR thread" }).closest("li")!;
     try {
-      const { requested } = mount({ rows: { thr_pr: { scanned: true, entries: [entry(7)] } } });
+      const { requested } = mount({ rows: { thr_pr: { scanned: true, scanFailed: false, entries: [entry(7)] } } });
       await waitFor(() => expect(observers.has(row())).toBe(true));
       await act(async () => {});
       expect(requested).toEqual([]);
@@ -161,7 +170,7 @@ describe("pull request rail", () => {
   it("requests nothing before the lifecycle rows have loaded", async () => {
     const gate = deferred<void>();
     const { requested } = mount({
-      rows: { thr_pr: { scanned: true, entries: [entry(7)] } },
+      rows: { thr_pr: { scanned: true, scanFailed: false, entries: [entry(7)] } },
       lifecycleGate: gate.promise,
     });
     await screen.findByText("PR thread");
@@ -176,7 +185,7 @@ describe("pull request rail", () => {
     const { requested } = mount({
       threads: [thread({ id: "thr_parked", title: "Parked work" })],
       lifecycle: [],
-      rows: { thr_parked: { scanned: true, entries: [entry(1), entry(2, failing)] } },
+      rows: { thr_parked: { scanned: true, scanFailed: false, entries: [entry(1), entry(2, failing)] } },
     });
     await screen.findByRole("img", { name: "Pull requests: 0 of 2 merged, 1 failing, 1 ready" });
     expect(requested).toEqual([["thr_parked"]]);
@@ -187,7 +196,11 @@ describe("pull request rail", () => {
       threads: [thread({ id: "thr_done", title: "Done work" })],
       lifecycle: [{ threadId: "thr_done", settledAt: 200, snoozedUntil: null, snoozedAt: null }],
       rows: {
-        thr_done: { scanned: true, entries: [merged(1, "2026-11-01T00:00:00Z"), merged(2, "2026-11-02T00:00:00Z")] },
+        thr_done: {
+          scanned: true,
+          scanFailed: false,
+          entries: [merged(1, "2026-11-01T00:00:00Z"), merged(2, "2026-11-02T00:00:00Z")],
+        },
       },
     });
     const settled = await screen.findByRole("region", { name: "Settled" });
@@ -218,6 +231,7 @@ describe("pull requests in the hover card", () => {
   it("lists open work first as stacks, folds finished PRs, and spells out checks", async () => {
     const { card } = await openCard({
       scanned: true,
+      scanFailed: false,
       entries: [
         merged(1, "2026-11-01T00:00:00Z"),
         merged(2, "2026-11-02T00:00:00Z"),
@@ -253,13 +267,20 @@ describe("pull requests in the hover card", () => {
   });
 
   it("says it is looking while the thread's log has not been scanned", async () => {
-    const { card } = await openCard({ scanned: false, entries: [] });
+    const { card } = await openCard({ scanned: false, scanFailed: false, entries: [] });
     expect(within(card).getByText("Looking for pull requests…")).toBeTruthy();
+  });
+
+  it("stops saying it is looking once the scan has failed", async () => {
+    const { card } = await openCard({ scanned: false, scanFailed: true, entries: [] });
+    expect(within(card).getByText("Couldn't look for pull requests")).toBeTruthy();
+    expect(within(card).queryByText("Looking for pull requests…")).toBeNull();
   });
 
   it("names the repo when the thread's PRs span several", async () => {
     const { card } = await openCard({
       scanned: true,
+      scanFailed: false,
       entries: [entry(1, {}, "acme/internal-tool-csm-ops"), entry(2, {}, "acme/backend-net")],
     });
     const list = within(card).getByRole("list", { name: "Pull requests" });

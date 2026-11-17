@@ -49,6 +49,8 @@ export interface ThreadPullRequests {
   entries: PullRequestEntry[];
   /** False until the thread's log has been scanned once. */
   scanned: boolean;
+  /** The latest scan attempt failed; the server tries again while the thread is watched. */
+  scanFailed: boolean;
 }
 
 export type PullRequestStatus =

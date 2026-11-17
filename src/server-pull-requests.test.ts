@@ -125,7 +125,7 @@ const keep = (harness: Awaited<ReturnType<typeof mount>>["harness"]) =>
 it("reads nothing and does no work until a client watches the thread", async () => {
   const host = await mount({ events: { thr_a: [created(1, 10)] } });
   keep(host.harness);
-  expect(await host.read()).toEqual({ entries: [], scanned: false });
+  expect(await host.read()).toEqual({ entries: [], scanned: false, scanFailed: false });
   await vi.advanceTimersByTimeAsync(60_000);
   expect(host.list).not.toHaveBeenCalled();
   expect(host.hostCall).not.toHaveBeenCalled();
@@ -146,13 +146,14 @@ it("scans a watched thread, looks its PRs up once on its host, and invalidates o
   expect(host.hostCall.mock.calls[0]?.[0]).toMatchObject({ hostId: "host_a", input: { urls: [url(10), url(11)] } });
   expect(await host.read()).toEqual({
     scanned: true,
+    scanFailed: false,
     entries: [
       { url: url(10), repo: "o/r", number: 10, facts: merged },
       { url: url(11), repo: "o/r", number: 11, facts: facts() },
     ],
   });
   expect(host.invalidations()).toEqual([[TAG]]);
-  expect(await host.read("thr_b")).toEqual({ entries: [], scanned: false });
+  expect(await host.read("thr_b")).toEqual({ entries: [], scanned: false, scanFailed: false });
   unwatch();
 });
 
@@ -168,7 +169,7 @@ it("keeps facts across a reload and serves them without a scan", async () => {
     string,
     ThreadPullRequests
   >;
-  expect(rows.thr_a).toMatchObject({ scanned: true, entries: [{ number: 10, facts: facts() }] });
+  expect(rows.thr_a).toMatchObject({ scanned: true, scanFailed: false, entries: [{ number: 10, facts: facts() }] });
   expect(host.list.mock.calls.length).toBe(scans);
 });
 
@@ -296,6 +297,25 @@ it("rescans from the last seen sequence when a watched thread's turn ends", asyn
   expect(host.invalidations()).toEqual([[TAG], [TAG]]);
 });
 
+it("notes a failed scan on the read and tries again with backoff while the thread is watched", async () => {
+  const host = await mount({ events: { thr_a: [created(1, 10)] } });
+  keep(host.harness);
+  host.list.mockRejectedValueOnce(new Error("events unavailable"));
+  host.harness.behavior.experimental_watchRpc("getPullRequests", { key: "thr_a" });
+  await tick();
+  expect(await host.read()).toEqual({ entries: [], scanned: false, scanFailed: true });
+  expect(host.invalidations()).toEqual([[TAG]]);
+  await vi.advanceTimersByTimeAsync(40_000);
+  expect(host.list).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(20_000);
+  expect(host.list).toHaveBeenCalledTimes(2);
+  expect(await host.read()).toMatchObject({
+    scanned: true,
+    scanFailed: false,
+    entries: [{ number: 10, facts: facts() }],
+  });
+});
+
 it("rescans a working thread on every tick while it is watched", async () => {
   const events = { thr_a: [created(1, 10)] };
   const host = await mount({ events });
@@ -388,7 +408,7 @@ it("leaves a PR the host never described as unknown, never as ready", async () =
   keep(host.harness);
   host.harness.behavior.experimental_watchRpc("getPullRequests", { key: "thr_a" });
   await tick();
-  expect(await host.read()).toMatchObject({ scanned: true, entries: [{ number: 10, facts: null }] });
+  expect(await host.read()).toMatchObject({ scanned: true, scanFailed: false, entries: [{ number: 10, facts: null }] });
 });
 
 it("treats a host that cannot run the lookup like any failed lookup: unknown facts, asked again in a minute", async () => {
@@ -447,7 +467,11 @@ it("skips threads with no workspace and discovers a worktree's branch PR from Gi
   await tick();
   expect(host.lookups()).toEqual([[url(10), "https://github.com/o/r/pull/99"]]);
   expect((await host.read()).entries.map((entry) => entry.url)).toEqual([url(10), "https://github.com/o/r/pull/99"]);
-  expect(await host.read("thr_c")).toMatchObject({ scanned: true, entries: [{ number: 30, facts: null }] });
+  expect(await host.read("thr_c")).toMatchObject({
+    scanned: true,
+    scanFailed: false,
+    entries: [{ number: 30, facts: null }],
+  });
 });
 
 it("forgets a deleted thread's rows and the PRs only it listed", async () => {
@@ -460,7 +484,7 @@ it("forgets a deleted thread's rows and the PRs only it listed", async () => {
   host.harness.behavior.experimental_watchRpc("getPullRequests", { key: "thr_b" });
   await tick();
   await host.harness.behavior.emitThreadEvent("thread.deleted", { thread: makeThreadResponse({ id: "thr_a" }) });
-  expect(await host.read("thr_a")).toEqual({ entries: [], scanned: false });
+  expect(await host.read("thr_a")).toEqual({ entries: [], scanned: false, scanFailed: false });
   expect((await host.read("thr_b")).entries).toEqual([{ url: url(10), repo: "o/r", number: 10, facts: facts() }]);
   expect(host.bb.storage.database().prepare(`SELECT url FROM pull_requests ORDER BY url`).all()).toEqual([
     { url: url(10) },
@@ -475,7 +499,7 @@ it("reads large logs a bounded number of pages per tick and carries on next tick
   host.harness.behavior.experimental_watchRpc("getPullRequests", { key: "thr_a" });
   await tick();
   expect(host.list).toHaveBeenCalledTimes(20);
-  expect(await host.read()).toMatchObject({ scanned: true, entries: [] });
+  expect(await host.read()).toMatchObject({ scanned: true, scanFailed: false, entries: [] });
   await vi.advanceTimersByTimeAsync(20_000);
   expect(host.list).toHaveBeenCalledTimes(21);
   expect((await host.read()).entries.map((entry) => entry.number)).toEqual([10]);

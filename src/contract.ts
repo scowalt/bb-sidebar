@@ -75,6 +75,7 @@ const pullRequestEntrySchema = z.object({
 const threadPullRequestsSchema = z.object({
   entries: z.array(pullRequestEntrySchema),
   scanned: z.boolean(),
+  scanFailed: z.boolean(),
 }) satisfies z.ZodType<ThreadPullRequests>;
 
 export const ownedPortTargetSchema = z.object({

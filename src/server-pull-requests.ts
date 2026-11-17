@@ -149,6 +149,7 @@ export function createServerPullRequests(
         : [];
     }),
     scanned: scanRow(threadId) !== undefined,
+    scanFailed: scanFailures.has(threadId),
   });
 
   // How many producers hold each thread; a thread is watched while above zero.
@@ -156,6 +157,8 @@ export function createServerPullRequests(
   // Watched since the last tick, or just finished a turn: scan now and look
   // up even if Settled.
   const kicked = new Set<string>();
+  // Threads whose latest scan threw: shown on the read, retried with backoff while watched.
+  const scanFailures = new Map<string, { count: number; at: number }>();
   const working = new Set<string>();
   const inFlight = new Set<string>();
   const hostFailureLogged = new Set<string>();
@@ -358,7 +361,14 @@ export function createServerPullRequests(
     const before = new Map(ids.map((id) => [id, JSON.stringify(readOne(id))]));
     const facts = await threadFacts(ids);
 
-    const candidates = ids.filter((id) => kickedNow.has(id) || (working.has(id) && watchers.has(id)));
+    const retryDue = (id: string) => {
+      const failure = scanFailures.get(id);
+      return (
+        failure !== undefined &&
+        Date.now() - failure.at >= FAILURE_BACKOFF_MS[Math.min(failure.count, FAILURE_BACKOFF_MS.length) - 1]!
+      );
+    };
+    const candidates = ids.filter((id) => kickedNow.has(id) || working.has(id) || retryDue(id));
     const cold = candidates.filter((id) => scanRow(id) === undefined);
     const coldNow = [...cold.filter((id) => kickedNow.has(id)), ...cold.filter((id) => !kickedNow.has(id))].slice(
       0,
@@ -367,8 +377,15 @@ export function createServerPullRequests(
     for (const id of cold) if (!coldNow.includes(id)) kicked.add(id);
     const scanIds = [...coldNow, ...candidates.filter((id) => !cold.includes(id))];
     const scans = await runThreadTasks(scanIds, scanThread, SCAN_CONCURRENCY);
-    for (const failure of scans.failures)
+    const failedScans = new Set(scans.failures.map((failure) => failure.threadId));
+    for (const id of scanIds) if (!failedScans.has(id)) scanFailures.delete(id);
+    for (const failure of scans.failures) {
+      scanFailures.set(failure.threadId, {
+        count: (scanFailures.get(failure.threadId)?.count ?? 0) + 1,
+        at: Date.now(),
+      });
       bb.log.debug(`Scanning ${failure.threadId} for pull requests: ${failure.error}`);
+    }
     await discoverBranchPullRequests(scanIds, facts);
 
     // Due URLs by host, ranked: just-watched threads first (their rows are
@@ -408,7 +425,7 @@ export function createServerPullRequests(
   };
 
   return {
-    /** The keyed read: SQLite only, never waits on a scan or a host. */
+    /** The keyed read: SQLite and memory only, never waits on a scan or a host. */
     read(threadIds: readonly string[]): Record<string, ThreadPullRequests> {
       return Object.fromEntries(threadIds.map((threadId) => [threadId, readOne(threadId)]));
     },
@@ -443,6 +460,7 @@ export function createServerPullRequests(
     forget(threadId: string) {
       working.delete(threadId);
       kicked.delete(threadId);
+      scanFailures.delete(threadId);
       db.transaction(() => {
         deleteThreadUrls.run(threadId);
         deleteScan.run(threadId);

@@ -35,7 +35,7 @@ export function ThreadPullRequestDetails({ thread }: { thread: PluginSidebarThre
     return (
       <div className="flex items-center gap-2 text-xs font-normal leading-4 text-muted-foreground">
         <Icon name="GitPullRequest" className="size-3.5 shrink-0" aria-hidden />
-        <span>Looking for pull requests…</span>
+        <span>{pullRequests.scanFailed ? "Couldn't look for pull requests" : "Looking for pull requests…"}</span>
       </div>
     );
   }
