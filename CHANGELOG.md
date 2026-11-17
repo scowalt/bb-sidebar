@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.15] - 2026-11-21
+
 ### Added
 
 - **A thread that needs you can be snoozed.** When an agent asks a question you cannot answer yet, Snooze on the card, in the row menu, in the command palette and through `bb sidebar snooze` puts it off until the time you pick. The question that was waiting when you snoozed, and any its subthreads were already asking, no longer bring the thread back. It returns at the snooze time, when it gets new activity, or when another thread in its tree asks something. A snooze set while no question was waiting still ends at the first question, as before. Park, Settle and Archive still wait for an answer.
