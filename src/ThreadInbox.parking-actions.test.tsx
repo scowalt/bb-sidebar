@@ -130,8 +130,35 @@ describe("parking threads", () => {
     expect(statusWrapper.className).toContain("[@media(hover:none)]:opacity-100");
   });
 
-  // A working or blocked thread cannot be parked, so it has no actions to
-  // share the slot with — but it must still show its status on touch.
+  // A thread that needs you can be put off with Snooze, but not parked or
+  // settled, and its status shares the touch row with that one action.
+  it("offers Snooze but not Settle on a thread that needs you", async () => {
+    renderSlot(inbox, listProps, {
+      sidebarThreads: {
+        status: "ready",
+        threads: [
+          thread({
+            id: "thr_pending",
+            title: "Still asking",
+            hasPendingInteraction: true,
+            indicator: "waiting-for-input",
+          }),
+        ],
+        projects: [{ id: "proj_1", name: "bb", isPersonal: false, href: "", settingsHref: "" }],
+      },
+      rpc: { listLifecycle: () => ({ rows: [] }) },
+    });
+
+    const row = (await screen.findByText("Still asking")).closest("li")!;
+    expect(within(row).getByRole("combobox", { name: "Snooze thread" })).toBeDefined();
+    expect(within(row).queryByRole("button", { name: "Settle thread" })).toBeNull();
+    const { status, statusWrapper } = statusSlotParts(row, "Needs you");
+    expect(status.getAttribute("aria-hidden")).toBeNull();
+    expect(statusWrapper.className).toContain("[@media(hover:none)]:opacity-100");
+  });
+
+  // A working thread cannot be parked or snoozed, so it has no actions to
+  // share the slot with, but it must still show its status on touch.
   it("keeps the status on rows that offer no park actions", async () => {
     const now = Math.floor(Date.now() / 60_000) * 60_000;
     window.localStorage.setItem("bb-sidebar:working-since:v1", JSON.stringify({ thr_working: now - 5 * 60_000 }));
@@ -146,13 +173,6 @@ describe("parking threads", () => {
             indicatorLabel: "Agent is working",
             updatedAt: now,
           }),
-          thread({
-            id: "thr_pending",
-            title: "Still asking",
-            hasPendingInteraction: true,
-            indicator: "waiting-for-input",
-            updatedAt: now,
-          }),
         ],
         projects: [{ id: "proj_1", name: "bb", isPersonal: false, href: "", settingsHref: "" }],
       },
@@ -160,10 +180,7 @@ describe("parking threads", () => {
     });
 
     await screen.findByText("Still working");
-    for (const [title, statusText] of [
-      ["Still working", "Working · 5m"],
-      ["Still asking", "Needs you"],
-    ] as const) {
+    for (const [title, statusText] of [["Still working", "Working · 5m"]] as const) {
       const row = screen.getByText(title).closest("li")!;
       expect(within(row).queryByRole("combobox", { name: "Snooze thread" })).toBeNull();
       expect(within(row).queryByRole("button", { name: "Settle thread" })).toBeNull();

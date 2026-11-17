@@ -12,7 +12,7 @@ import {
   resolveRowShelf,
 } from "./lifecycle";
 import { placeOnRowShelves, threadStoredTitle } from "./inbox";
-import { ancestorsOfAskingThreads } from "./child-status";
+import { askingThreadsByThread } from "./child-status";
 
 type CliHandlers = Pick<
   ServerHandlers,
@@ -87,7 +87,7 @@ export function createServerCli(
     const threads = await loadPolicyThreads();
     // A child's question shows inside its parent's row, so it counts as the
     // parent's own, as it does in the sidebar.
-    const asking = ancestorsOfAskingThreads(threads, (thread) => thread.hasPendingInteraction);
+    const asking = askingThreadsByThread(threads, (thread) => thread.hasPendingInteraction);
     // A snooze can wait on messages scheduled for later, which bb reports as
     // queued work.
     const snoozedWithWaitingQueue = threads.filter(
@@ -98,8 +98,8 @@ export function createServerCli(
       : {};
     const placed = placeOnRowShelves(threads, (thread) => {
       const row = readOne(thread.id) ?? undefined;
-      const signals = threadSignals(thread);
-      if (asking.has(thread.id)) signals.hasPendingInteraction = true;
+      const askingThreadIds = asking.get(thread.id) ?? [];
+      const signals = { ...threadSignals(thread), hasPendingInteraction: askingThreadIds.length > 0, askingThreadIds };
       const placement = placementSignals(signals, {
         row,
         queuedWork: thread.queuedWork,
