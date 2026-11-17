@@ -100,8 +100,19 @@ export function pullRequestCard(entries: readonly PullRequestEntry[], now: numbe
           branchKey(child.repo, child.facts.base) === branchKey(parent.repo, parent.facts.head),
       )
       .sort((a, b) => a.number - b.number);
-  const worst = (entry: PullRequestEntry): number =>
-    Math.min(PR_STATUS[pullRequestStatus(entry)].rank, ...children(entry).map(worst));
+  // Bases can loop (a release back-merge), so every walk remembers where it has been.
+  const worst = (root: PullRequestEntry): number => {
+    let rank = Number.POSITIVE_INFINITY;
+    const visited = new Set<PullRequestEntry>();
+    const pending = [root];
+    for (let entry = pending.pop(); entry; entry = pending.pop()) {
+      if (visited.has(entry)) continue;
+      visited.add(entry);
+      rank = Math.min(rank, PR_STATUS[pullRequestStatus(entry)].rank);
+      pending.push(...children(entry));
+    }
+    return rank;
+  };
   const roots = open
     .filter((entry) => !entry.facts?.base || !heads.has(branchKey(entry.repo, entry.facts.base)))
     .sort((a, b) => worst(a) - worst(b) || a.number - b.number);
@@ -114,7 +125,7 @@ export function pullRequestCard(entries: readonly PullRequestEntry[], now: numbe
     for (const child of children(entry)) walk(child, depth + 1);
   };
   for (const root of roots) walk(root, 0);
-  // A cycle of bases has no root; list what the walk missed as roots.
+  // A loop of bases with no way in has no root; list what the walk missed as roots.
   for (const entry of open) walk(entry, 0);
   const doneRows = done.map((entry) => row(entry, 0));
   const merged = done.filter((entry) => pullRequestStatus(entry) === "merged").length;

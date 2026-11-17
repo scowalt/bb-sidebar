@@ -37,6 +37,46 @@ describe("pullRequestCard", () => {
     expect(card.rows.map((row) => row.ref)).toEqual(["#2", "#3", "#1"]);
   });
 
+  it("lists every PR once when branch bases form a loop, with a root leading into it", () => {
+    // main→release, feat→main, main→feat and hotfix→release: two roots, one of
+    // which reaches the feat/main loop.
+    const card = pullRequestCard(
+      [
+        entry(1, { head: "main", base: "release" }),
+        entry(2, { head: "feat", base: "main" }),
+        entry(3, { head: "main", base: "feat" }),
+        entry(4, { head: "hotfix", base: "release" }),
+      ],
+      NOW,
+    );
+    expect(card.rows.map((row) => [row.ref, row.depth])).toEqual([
+      ["#1", 0],
+      ["#2", 1],
+      ["#3", 2],
+      ["#4", 0],
+    ]);
+  });
+
+  it("survives a release flow's back-merge and still sorts roots by their worst subtree", () => {
+    // A hotfix, main→staging, main→release and the back-merge release→main:
+    // the failing PR sits inside the loop, so the root that reaches it goes first.
+    const card = pullRequestCard(
+      [
+        entry(1, { head: "hotfix", base: "staging" }),
+        entry(2, { head: "main", base: "staging" }),
+        entry(3, { head: "main", base: "release", ...failing }),
+        entry(4, { head: "release", base: "main" }),
+      ],
+      NOW,
+    );
+    expect(card.rows.map((row) => [row.ref, row.depth])).toEqual([
+      ["#2", 0],
+      ["#4", 1],
+      ["#3", 2],
+      ["#1", 0],
+    ]);
+  });
+
   it("folds three or more finished PRs behind one line while something is open", () => {
     const done = [
       entry(1, { state: "merged", mergedAt: "2026-11-10T00:00:00Z" }),
