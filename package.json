@@ -27,13 +27,7 @@
     "server": "./src/server.ts",
     "host": "./src/ports-host.ts"
   },
-  "keywords": [
-    "bb-plugin",
-    "sidebar",
-    "threads",
-    "inbox",
-    "productivity"
-  ],
+  "keywords": ["bb-plugin", "sidebar", "threads", "inbox", "productivity"],
   "files": [
     "dist",
     "src",
