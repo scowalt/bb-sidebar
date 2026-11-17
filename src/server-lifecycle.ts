@@ -367,6 +367,35 @@ export function createServerLifecycle(ctx: ServerContext) {
     });
   };
 
+  /**
+   * Where threads sit and run, for the pull request tracker: Settled by the
+   * row the sidebar places each thread on (a child follows its tree's top
+   * thread), plus the workspace it runs in. Ids bb no longer lists are left
+   * out.
+   */
+  const describeThreads = async (threadIds: readonly string[], now = Date.now()) => {
+    const threads = await loadPolicyThreads(true);
+    const byId = new Map(threads.map((thread) => [thread.id, thread] as const));
+    const rowIds = shelfRowIds(threads);
+    const facts = new Map<
+      string,
+      { settled: boolean; environmentId: string | null; hostId: string | null; isWorktree: boolean }
+    >();
+    for (const threadId of threadIds) {
+      const thread = byId.get(threadId);
+      if (!thread) continue;
+      const top = byId.get(rowIds.get(threadId) ?? threadId) ?? thread;
+      const shelf = resolveRowShelf(readOne(top.id) ?? undefined, threadSignals(top), now, top.pinnedAt !== null);
+      facts.set(threadId, {
+        settled: shelf === "settled",
+        environmentId: thread.environmentId,
+        hostId: thread.environmentHostId,
+        isWorktree: thread.environmentIsWorktree === true,
+      });
+    }
+    return facts;
+  };
+
   // Settle wrote only the root's row before it covered whole trees, and a
   // child archived when its tree settled came back from the archive without
   // one. Repair those trees once.
@@ -424,6 +453,7 @@ export function createServerLifecycle(ctx: ServerContext) {
     loadSettleTree,
     backfillSettledChildRows,
     settleUnarchivedTree,
+    describeThreads,
   };
 }
 
