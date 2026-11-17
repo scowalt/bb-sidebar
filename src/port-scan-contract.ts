@@ -49,8 +49,8 @@ export const portScanContract = defineRpcContract({
   // The plugin's only host entry, so it also runs `gh` and `tea` where the
   // thread's workspace, and so its sign-in, lives. A new name rather than a
   // wider `pullRequests` (the method before 0.4): an older host answering the
-  // old shape would otherwise derive to a false "ready". The server reads
-  // `unknown_method` as "this host cannot look PRs up yet".
+  // old shape would otherwise derive to a false "ready"; a host without the
+  // method fails the call, and the server backs off as for any failure.
   lookUpPullRequests: {
     input: z.object({ urls: z.array(z.string().url()).min(1).max(20) }),
     output: z.object({ pullRequests: z.array(pullRequestLookupResultSchema) }),

@@ -267,19 +267,22 @@ it("leaves a PR the host never described as unknown, never as ready", async () =
   expect(await host.read()).toMatchObject({ scanned: true, entries: [{ number: 10, facts: null }] });
 });
 
-it("waits ten minutes before asking a host whose plugin lacks the lookup", async () => {
+it("treats a host that cannot run the lookup like any failed lookup: unknown facts, asked again in a minute", async () => {
+  // bb's host worker answers `unknown host method "lookUpPullRequests"` when the
+  // host's plugin predates the method. However the error is shaped, the PR
+  // stays unknown and the usual failure backoff applies.
   const host = await mount({
     events: { thr_a: [created(1, 10)] },
-    answer: () => Object.assign(new Error("Unknown method lookUpPullRequests"), { code: "unknown_method" }),
+    answer: () => Object.assign(new Error('unknown host method "lookUpPullRequests"'), { code: "unknown_method" }),
   });
   keep(host.harness);
   host.harness.behavior.experimental_watchRpc("getPullRequests", { key: "thr_a" });
   await tick();
   expect(host.hostCall).toHaveBeenCalledTimes(1);
   expect((await host.read()).entries[0]?.facts).toBeNull();
-  await vi.advanceTimersByTimeAsync(5 * 60_000);
+  await vi.advanceTimersByTimeAsync(40_000);
   expect(host.hostCall).toHaveBeenCalledTimes(1);
-  await vi.advanceTimersByTimeAsync(6 * 60_000);
+  await vi.advanceTimersByTimeAsync(20_000);
   expect(host.hostCall).toHaveBeenCalledTimes(2);
 });
 

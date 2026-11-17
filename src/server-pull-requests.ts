@@ -46,8 +46,6 @@ const OPEN_RECHECK_MS = 2 * 60_000;
 /** Below the tick, so running checks are asked about on every tick. */
 const PENDING_RECHECK_MS = 15_000;
 const FAILURE_BACKOFF_MS = [60_000, 5 * 60_000, 10 * 60_000, 30 * 60_000] as const;
-/** A host whose plugin predates `lookUpPullRequests` is asked again this much later. */
-const MISSING_METHOD_BACKOFF_MS = 10 * 60_000;
 const THREAD_FACTS_TTL_MS = 60_000;
 const LOOKUP_CHUNK = 20;
 const HOST_CALL_TIMEOUT_MS = 30_000;
@@ -70,10 +68,6 @@ interface StoredUrlRow {
 
 const branchRowSchema = z.object({ outcome: z.literal("available"), pullRequest: z.object({ url: z.string() }) });
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
-const isUnknownMethod = (error: unknown) =>
-  isRecord(error) &&
-  (error.code === "unknown_method" || (typeof error.message === "string" && /unknown[ _]method/i.test(error.message)));
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 export function createServerPullRequests(
@@ -146,7 +140,6 @@ export function createServerPullRequests(
   const kicked = new Set<string>();
   const working = new Set<string>();
   const inFlight = new Set<string>();
-  const hostBackoffUntil = new Map<string, number>();
   const hostFailureLogged = new Set<string>();
   let factsCache: { at: number; ids: ReadonlySet<string>; map: ReadonlyMap<string, PullRequestThreadFacts> } | null =
     null;
@@ -300,14 +293,6 @@ export function createServerPullRequests(
       } catch (error) {
         if (controller.signal.aborted) return;
         const now = Date.now();
-        if (isUnknownMethod(error)) {
-          hostBackoffUntil.set(hostId, now + MISSING_METHOD_BACKOFF_MS);
-          if (!hostFailureLogged.has(hostId)) {
-            bb.log.warn(`Host ${hostId} runs an older sidebar plugin without pull request lookups; retrying later.`);
-            hostFailureLogged.add(hostId);
-          }
-          return;
-        }
         db.transaction(() => {
           for (const url of chunk) writeFailure.run(url, now, url);
         })();
@@ -349,7 +334,6 @@ export function createServerPullRequests(
     for (const id of ids) {
       const thread = facts.get(id);
       if (!thread?.hostId || (thread.settled && !kickedNow.has(id))) continue;
-      if ((hostBackoffUntil.get(thread.hostId) ?? 0) > now) continue;
       for (const row of urlRows(id)) {
         if (inFlight.has(row.url) || !isDue(row, now)) continue;
         let urls = dueByHost.get(thread.hostId);
