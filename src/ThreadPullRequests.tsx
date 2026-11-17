@@ -34,6 +34,7 @@ export function ThreadPullRequestDetails({ thread }: { thread: PluginSidebarThre
     );
   }
   const summary = summarizePullRequests(pullRequests.entries);
+  const rollup = rollupWords(summary);
   const card = pullRequestCard(pullRequests.entries, Date.now());
   const rows = unfolded && card.folded ? [...card.rows, ...card.folded.rows] : card.rows;
   return (
@@ -50,7 +51,7 @@ export function ThreadPullRequestDetails({ thread }: { thread: PluginSidebarThre
         {summary.rollup.map(({ status }, index) => (
           <span key={status}>
             {index ? <span className="text-muted-foreground/60"> · </span> : null}
-            <span className={PR_TONE_TEXT[PR_STATUS[status].tone]}>{rollupWords(summary)[index]}</span>
+            <span className={PR_TONE_TEXT[PR_STATUS[status].tone]}>{rollup[index]}</span>
           </span>
         ))}
       </div>
