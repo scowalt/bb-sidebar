@@ -145,13 +145,13 @@ async function lookUpGitea(identity: PullRequestIdentity, signal: AbortSignal): 
   const sha = isRecord(detail.head) && typeof detail.head.sha === "string" ? detail.head.sha : null;
   // A merged or closed PR needs neither checks nor reviews. An open one needs
   // both, and either failing fails the PR.
-  const [status, reviews] =
-    terminal || !sha
-      ? [null, null]
-      : await Promise.all([
-          teaJson(login.name, `${base}/commits/${sha}/status`, signal),
-          teaJson(login.name, `${base}/pulls/${identity.number}/reviews`, signal),
-        ]);
+  if (!terminal && !sha) throw new LookupFailure("error", "Gitea named no head commit for an open pull request");
+  const [status, reviews] = terminal
+    ? [null, null]
+    : await Promise.all([
+        teaJson(login.name, `${base}/commits/${sha}/status`, signal),
+        teaJson(login.name, `${base}/pulls/${identity.number}/reviews`, signal),
+      ]);
   const facts = parseGiteaFacts(pull, status, reviews);
   if (!facts) throw new LookupFailure("error", "Gitea returned no pull request");
   return facts;

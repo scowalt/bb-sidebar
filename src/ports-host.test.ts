@@ -260,6 +260,15 @@ describe("host pull request lookup", () => {
     expect(pullRequests).toEqual([{ url: "https://git.example.com/o/r/pulls/8", outcome: "failed", reason: "error" }]);
   });
 
+  it("fails an open PR whose head has no commit, instead of reading it without checks", async () => {
+    tea({ "repos/o/r/pulls/8": pull({ head: { ref: "feature" } }) });
+    const { pullRequests } = await harness.experimental_call("lookUpPullRequests", {
+      urls: ["https://git.example.com/o/r/pulls/8"],
+    });
+    expect(pullRequests).toEqual([{ url: "https://git.example.com/o/r/pulls/8", outcome: "failed", reason: "error" }]);
+    expect(teaCalls().filter((call) => call.startsWith("api"))).toEqual(["api --login work repos/o/r/pulls/8"]);
+  });
+
   it("reads tea's HTTP error body as a failure, since tea exits 0 on one", async () => {
     tea({ "repos/o/r/pulls/9": { message: "not found", url: "https://git.example.com/api/swagger" } });
     const { pullRequests } = await harness.experimental_call("lookUpPullRequests", {
