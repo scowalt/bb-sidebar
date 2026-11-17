@@ -46,7 +46,11 @@ export interface ThreadActivitySignals {
 export type ThreadShelf = "active" | "parked" | "snoozed" | "settled";
 type WakeReason = "timer" | "attention";
 
-/** Whether the thread asks something its snooze did not put off. */
+/**
+ * Whether the thread asks something its snooze did not put off. A put-off
+ * thread that asks again first works: its own turn ends with new attention,
+ * and a child's `thread.active` wakes its snoozed ancestors on the server.
+ */
 function asksSomethingNew(row: ThreadLifecycleRow | undefined, signals: ThreadActivitySignals): boolean {
   if (!signals.hasPendingInteraction) return false;
   const putOff = row?.snoozedUntil == null ? undefined : row.snoozedQuestionThreadIds;

@@ -227,15 +227,15 @@ export function createServerHandlers(
       const pending = before !== undefined && isTurnInFlight(before.status);
       // The questions the user is putting off, so that only another one wakes
       // the snooze. A question asked in the agent's own turn is news, so a
-      // snooze that starts when the turn ends puts nothing off.
+      // snooze that starts when the turn ends puts nothing off. A failed
+      // listing fails the snooze rather than bouncing it straight back.
       const snoozedQuestionThreadIds = pending
         ? []
-        : await loadPolicyThreads(true).then(
-            (threads) => [
-              ...(askingThreadsByThread(threads, (thread) => thread.hasPendingInteraction).get(threadId) ?? []),
-            ],
-            () => [],
-          );
+        : [
+            ...(askingThreadsByThread(await loadPolicyThreads(true), (thread) => thread.hasPendingInteraction).get(
+              threadId,
+            ) ?? []),
+          ];
       const now = Date.now();
       write({
         threadId,
