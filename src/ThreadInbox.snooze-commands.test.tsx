@@ -109,9 +109,22 @@ describe("palette snooze commands", () => {
     expect(wakeAt).toBeLessThanOrEqual(Date.now() + HOUR_MS);
   });
 
+  it("snoozes a thread that needs you, to answer it later", async () => {
+    const snooze = vi.fn((_input: unknown) => ({
+      ok: true,
+      reclaim: { closedTerminals: 0, keptTerminals: 0, stoppedRuntime: false },
+    }));
+    renderInbox([thread({ id: "asking", title: "Asking thread", hasPendingInteraction: true })], { snooze });
+    await screen.findByRole("link", { name: "Asking thread" });
+
+    paletteCommands().run("snooze-1h", "asking");
+
+    await waitFor(() => expect(snooze).toHaveBeenCalledWith(expect.objectContaining({ threadId: "asking" })));
+    expect(toastMocks.error).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["is working", { status: "active", indicator: "runtime" }, "Busy thread is still working"],
-    ["has a question waiting", { hasPendingInteraction: true }, "Busy thread needs you"],
     ["has a queued message", { queuedWork: "waiting" }, "Busy thread has a queued message"],
   ] as const)("refuses to snooze a thread that %s and says why", async (_reason, overrides, description) => {
     const snooze = vi.fn();

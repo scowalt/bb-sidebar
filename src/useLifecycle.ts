@@ -25,7 +25,7 @@ import {
   type ThreadShelf,
   waitsOnlyOnScheduledSends,
 } from "./lifecycle";
-import { threadsWithAskingDescendants } from "./child-status";
+import { askingThreadsByThread, threadsWithAskingDescendants } from "./child-status";
 import { resolveThreadTitlesIn, threadDisplayTitle } from "./inbox";
 import { threadTreeIds } from "./thread-tree";
 import { useLimitActions } from "./RateLimits";
@@ -139,6 +139,14 @@ export function useLifecycle(threads: readonly PluginSidebarThread[], lifecycleR
     () => new Set(askingParentKey === "" ? [] : askingParentKey.split("\n")),
     [askingParentKey],
   );
+  // Who asks, by bb's own flag, as the server records it when a snooze puts
+  // questions off.
+  const askersKey = JSON.stringify(
+    [...askingThreadsByThread(threads, (thread) => thread.hasPendingInteraction)].sort(([left], [right]) =>
+      left.localeCompare(right),
+    ),
+  );
+  const askers = useMemo(() => new Map<string, readonly string[]>(JSON.parse(askersKey)), [askersKey]);
 
   const inFlightThreadIds = useRef(new Set<string>());
   // Read at error time, so the API below keeps its identity across thread updates.
@@ -173,7 +181,11 @@ export function useLifecycle(threads: readonly PluginSidebarThread[], lifecycleR
     // back from any shelf, ends a snooze, and blocks parking it again.
     const signalsFor = (thread: PluginSidebarThread) => {
       const signals = sidebarThreadSignals(thread);
-      return askingParentIds.has(thread.id) ? { ...signals, hasPendingInteraction: true } : signals;
+      return {
+        ...signals,
+        hasPendingInteraction: signals.hasPendingInteraction || askingParentIds.has(thread.id),
+        askingThreadIds: askers.get(thread.id) ?? [],
+      };
     };
     // One mutation per thread at a time. The write publishes on the realtime
     // channel, and that subscription refreshes every client after success.
@@ -339,5 +351,5 @@ export function useLifecycle(threads: readonly PluginSidebarThread[], lifecycleR
       unsnooze: (threadId) => mutate({ method: "unsnooze", threadId }),
       snooze: (threadId, snoozedUntil) => mutate({ method: "snooze", threadId, snoozedUntil }),
     };
-  }, [askingParentIds, now, rows, rpc, recovery]);
+  }, [askingParentIds, askers, now, rows, rpc, recovery]);
 }

@@ -118,6 +118,7 @@ export function createServerPolicy(
               snoozedUntil: row?.snoozedUntil ?? null,
               snoozedAt: row?.snoozedAt ?? null,
               snoozePending: row?.snoozePending ?? false,
+              ...(row?.snoozedQuestionThreadIds ? { snoozedQuestionThreadIds: row.snoozedQuestionThreadIds } : {}),
             },
             false,
           );

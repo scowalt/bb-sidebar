@@ -117,6 +117,7 @@ const migrations = [
   ...INSTALL_DEFAULTS_MIGRATIONS,
   `ALTER TABLE thread_lifecycle ADD COLUMN snooze_pending INTEGER NOT NULL DEFAULT 0`,
   ...PULL_REQUESTS_MIGRATIONS,
+  `ALTER TABLE thread_lifecycle ADD COLUMN snoozed_question_thread_ids TEXT`,
 ];
 
 export default async function plugin(bb: BbPluginApi) {

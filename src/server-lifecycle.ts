@@ -23,6 +23,7 @@ export interface StoredLifecycleRow {
   snoozedUntil: number | null;
   snoozedAt: number | null;
   snoozePending?: boolean;
+  snoozedQuestionThreadIds?: string[];
 }
 interface LifecycleDbRow {
   thread_id: string;
@@ -32,6 +33,12 @@ interface LifecycleDbRow {
   snoozed_until: number | null;
   snoozed_at: number | null;
   snooze_pending: number;
+  snoozed_question_thread_ids: string | null;
+}
+
+/** RPC results cannot carry undefined, so a row without questions omits the key. */
+function snoozedQuestions(stored: string | null): Pick<StoredLifecycleRow, "snoozedQuestionThreadIds"> {
+  return stored === null ? {} : { snoozedQuestionThreadIds: JSON.parse(stored) as string[] };
 }
 
 export function createServerLifecycle(ctx: ServerContext) {
@@ -40,7 +47,8 @@ export function createServerLifecycle(ctx: ServerContext) {
       ctx.db
         .prepare(
           `SELECT thread_id, settled_at, settled_override,
-                  snoozed_until, snoozed_at, snooze_pending, parked_at
+                  snoozed_until, snoozed_at, snooze_pending, parked_at,
+                  snoozed_question_thread_ids
              FROM thread_lifecycle`,
         )
         .all() as LifecycleDbRow[]
@@ -52,13 +60,15 @@ export function createServerLifecycle(ctx: ServerContext) {
       snoozedUntil: row.snoozed_until,
       snoozedAt: row.snoozed_at,
       snoozePending: row.snooze_pending === 1,
+      ...snoozedQuestions(row.snoozed_question_thread_ids),
     }));
 
   const readOne = (threadId: string): StoredLifecycleRow | null => {
     const row = ctx.db
       .prepare(
         `SELECT thread_id, settled_at, settled_override,
-                snoozed_until, snoozed_at, snooze_pending, parked_at
+                snoozed_until, snoozed_at, snooze_pending, parked_at,
+                snoozed_question_thread_ids
            FROM thread_lifecycle
           WHERE thread_id = ?`,
       )
@@ -72,6 +82,7 @@ export function createServerLifecycle(ctx: ServerContext) {
           snoozedUntil: row.snoozed_until,
           snoozedAt: row.snoozed_at,
           snoozePending: row.snooze_pending === 1,
+          ...snoozedQuestions(row.snoozed_question_thread_ids),
         }
       : null;
   };
@@ -80,15 +91,17 @@ export function createServerLifecycle(ctx: ServerContext) {
     ctx.db
       .prepare(
         `INSERT INTO thread_lifecycle
-         (thread_id, settled_at, settled_override, snoozed_until, snoozed_at, snooze_pending, parked_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+         (thread_id, settled_at, settled_override, snoozed_until, snoozed_at, snooze_pending, parked_at,
+          snoozed_question_thread_ids)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(thread_id) DO UPDATE SET
          settled_at = excluded.settled_at,
          settled_override = excluded.settled_override,
          snoozed_until = excluded.snoozed_until,
          snoozed_at = excluded.snoozed_at,
          snooze_pending = excluded.snooze_pending,
-         parked_at = excluded.parked_at`,
+         parked_at = excluded.parked_at,
+         snoozed_question_thread_ids = excluded.snoozed_question_thread_ids`,
       )
       .run(
         row.threadId,
@@ -98,6 +111,7 @@ export function createServerLifecycle(ctx: ServerContext) {
         row.snoozedAt,
         row.snoozePending ? 1 : 0,
         row.parkedAt ?? null,
+        row.snoozedQuestionThreadIds?.length ? JSON.stringify(row.snoozedQuestionThreadIds) : null,
       );
     if (publish) {
       ctx.bb.rpc.experimental_invalidate([LIFECYCLE_TAG]);
