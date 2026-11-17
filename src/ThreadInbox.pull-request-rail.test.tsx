@@ -126,6 +126,25 @@ describe("pull request rail", () => {
     expect(segments(await rail("Pull requests: 0 of 1 merged, 1 in review"))).toEqual(["review_requested"]);
   });
 
+  it("forwards a click on the count to the row link with its modifiers, so Cmd-click still splits", async () => {
+    mount({ rows: { thr_pr: { scanned: true, scanFailed: false, entries: [entry(1), entry(2)] } } });
+    const count = await screen.findByText("0/2");
+    const link = screen.getByRole("link", { name: "PR thread" });
+    const clicks: Array<{ metaKey: boolean; ctrlKey: boolean }> = [];
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      clicks.push({ metaKey: event.metaKey, ctrlKey: event.ctrlKey });
+    });
+    fireEvent.click(count, { metaKey: true });
+    fireEvent.click(count, { ctrlKey: true });
+    fireEvent.click(count);
+    expect(clicks).toEqual([
+      { metaKey: true, ctrlKey: false },
+      { metaKey: false, ctrlKey: true },
+      { metaKey: false, ctrlKey: false },
+    ]);
+  });
+
   it("colors the count violet once everything is merged", async () => {
     mount({
       rows: {

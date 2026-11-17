@@ -117,12 +117,27 @@ export function PullRequestRail({
   );
 }
 
-/** The count sits over the row's full-bleed link; a click on it still opens the thread. */
+/**
+ * The count sits over the row's full-bleed link; a click on it still opens
+ * the thread, with its modifiers, so Cmd/Ctrl-click opens a split as on the row.
+ */
 function openRow(event: MouseEvent<HTMLElement>) {
-  event.currentTarget
+  const link = event.currentTarget
     .closest("[data-parent-card]")
-    ?.querySelector<HTMLAnchorElement>("a[data-sidebar-thread-id]")
-    ?.click();
+    ?.querySelector<HTMLAnchorElement>("a[data-sidebar-thread-id]");
+  if (!link) return;
+  const { button, ctrlKey, metaKey, shiftKey, altKey } = event.nativeEvent;
+  link.dispatchEvent(
+    new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button,
+      ctrlKey,
+      metaKey,
+      shiftKey,
+      altKey,
+    }),
+  );
 }
 
 function SinglePullRequest({ entry }: { entry: PullRequestEntry }) {
