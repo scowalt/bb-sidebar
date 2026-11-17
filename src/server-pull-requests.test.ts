@@ -48,16 +48,27 @@ const found = (target: string, value: PullRequestFacts): PullRequestLookupResult
 const onHost = (overrides: Partial<ProjectThread> & { id: string }) =>
   projectThread({ environmentId: `env_${overrides.id}`, environmentHostId: "host_a", ...overrides });
 
+/** bb's thread list, as the tracker's targeted lookups use it: by id, unknown ids left out. */
+function threadList(threads: ProjectThread[]) {
+  return vi.fn(async (args?: { threadIds?: readonly string[]; limit?: number; offset?: number }) => {
+    const matching = args?.threadIds ? threads.filter((thread) => args.threadIds!.includes(thread.id)) : threads;
+    const offset = args?.offset ?? 0;
+    return matching.slice(offset, offset + (args?.limit ?? 100));
+  }) as unknown as Sdk["threads"]["list"] & { mock: { calls: [{ threadIds?: readonly string[] }][] } };
+}
+
 async function mount({
   events = {},
   threads = [onHost({ id: "thr_a" })],
   answer = (target: string) => found(target, facts()),
   callRpc,
+  threadsList,
 }: {
   events?: Record<string, Event[]>;
   threads?: ProjectThread[];
   answer?: (url: string) => PullRequestLookupResult | Error;
   callRpc?: Sdk["plugins"]["callRpc"];
+  threadsList?: Sdk["threads"]["list"];
 } = {}) {
   const list = vi.fn(async ({ threadId, afterSeq, limit }: { threadId: string; afterSeq?: string; limit: string }) => {
     if (Number(limit) > 100) throw new Error("Thread event limit cannot exceed 100");
@@ -79,6 +90,7 @@ async function mount({
       threads: {
         get: async ({ threadId }) => makeThreadResponse({ id: threadId }),
         events: { list } as unknown as Sdk["threads"]["events"],
+        ...(threadsList ? { list: threadsList } : {}),
       },
     },
   });
@@ -231,6 +243,40 @@ it("looks a settled thread up when it is watched and never on later ticks", asyn
   expect(host.lookups()).toEqual([[url(11)]]);
   await vi.advanceTimersByTimeAsync(60_000);
   expect(host.lookups()).toEqual([[url(11)]]);
+});
+
+it("places a newly watched thread by reading it and its parents, never by listing every thread", async () => {
+  const threads = [
+    onHost({ id: "thr_top" }),
+    onHost({ id: "thr_a", parentThreadId: "thr_top" }),
+    onHost({ id: "thr_b" }),
+  ];
+  const threadsList = threadList(threads);
+  const host = await mount({
+    events: { thr_a: [created(1, 10)], thr_b: [created(1, 20)] },
+    threads,
+    threadsList,
+  });
+  keep(host.harness);
+  host.settle("thr_top");
+  host.harness.behavior.experimental_watchRpc("getPullRequests", { key: "thr_a" });
+  await tick();
+  const since = threadsList.mock.calls.length;
+  host.harness.behavior.experimental_watchRpc("getPullRequests", { key: "thr_b" });
+  await tick();
+  expect(host.lookups()).toEqual([[url(10)], [url(20)]]);
+  // Each thread is asked for by id, then its parent; no call lists everything.
+  expect(threadsList.mock.calls.slice(since).map(([args]) => args?.threadIds ?? "all")).toEqual([["thr_b"]]);
+  expect(threadsList.mock.calls.map(([args]) => args?.threadIds ?? "all")).toContainEqual(["thr_top"]);
+  // thr_a sits on its settled parent's row: looked up at watch time and never again.
+  await vi.advanceTimersByTimeAsync(150_000);
+  expect(
+    host
+      .lookups()
+      .flat()
+      .filter((target) => target === url(10)),
+  ).toHaveLength(1);
+  expect(host.lookups().at(-1)).toEqual([url(20)]);
 });
 
 it("rescans from the last seen sequence when a watched thread's turn ends", async () => {

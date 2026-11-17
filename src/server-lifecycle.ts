@@ -368,13 +368,43 @@ export function createServerLifecycle(ctx: ServerContext) {
   };
 
   /**
+   * These threads and their ancestors, under loadPolicyThreads' rules: enough
+   * to place each on its sidebar row without listing every thread. Parents
+   * are read a generation at a time; one bb no longer lists ends its chain.
+   */
+  const loadThreadsWithAncestors = async (threadIds: readonly string[]) => {
+    const byId = new Map<string, CleanupThread>();
+    const asked = new Set<string>();
+    let wanted = [...new Set(threadIds)];
+    while (wanted.length) {
+      for (const id of wanted) asked.add(id);
+      // bb takes at most 200 ids per call.
+      for (let start = 0; start < wanted.length; start += 200) {
+        const page = await ctx.bb.sdk.threads.list({
+          threadIds: wanted.slice(start, start + 200),
+          archived: false,
+          includeHidden: true,
+          limit: 200,
+        });
+        for (const thread of page) {
+          if (thread.archivedAt === null && thread.deletedAt === null) byId.set(thread.id, thread);
+        }
+      }
+      wanted = [...byId.values()].flatMap((thread) =>
+        thread.parentThreadId !== null && !asked.has(thread.parentThreadId) ? [thread.parentThreadId] : [],
+      );
+    }
+    return [...byId.values()];
+  };
+
+  /**
    * Where threads sit and run, for the pull request tracker: Settled by the
    * row the sidebar places each thread on (a child follows its tree's top
    * thread), plus the workspace it runs in. Ids bb no longer lists are left
    * out.
    */
   const describeThreads = async (threadIds: readonly string[], now = Date.now()) => {
-    const threads = await loadPolicyThreads(true);
+    const threads = await loadThreadsWithAncestors(threadIds);
     const byId = new Map(threads.map((thread) => [thread.id, thread] as const));
     const rowIds = shelfRowIds(threads);
     const facts = new Map<

@@ -157,8 +157,8 @@ export function createServerPullRequests(
   const working = new Set<string>();
   const inFlight = new Set<string>();
   const hostFailureLogged = new Set<string>();
-  let factsCache: { at: number; ids: ReadonlySet<string>; map: ReadonlyMap<string, PullRequestThreadFacts> } | null =
-    null;
+  // Per thread, for a minute; null when bb no longer lists it.
+  const threadFactsCache = new Map<string, { at: number; facts: PullRequestThreadFacts | null }>();
 
   let timer: ReturnType<typeof setTimeout> | null = null;
   let running = false;
@@ -197,13 +197,20 @@ export function createServerPullRequests(
     timer = null;
   });
 
+  /** Only threads whose entry is missing or a minute old are asked about. */
   const threadFacts = async (ids: readonly string[]) => {
     const now = Date.now();
-    if (factsCache && now - factsCache.at < THREAD_FACTS_TTL_MS && ids.every((id) => factsCache!.ids.has(id))) {
-      return factsCache.map;
+    const stale = ids.filter((id) => now - (threadFactsCache.get(id)?.at ?? 0) >= THREAD_FACTS_TTL_MS);
+    if (stale.length) {
+      const described = await deps.describeThreads(stale);
+      for (const id of stale) threadFactsCache.set(id, { at: now, facts: described.get(id) ?? null });
     }
-    const map = await deps.describeThreads(ids);
-    factsCache = { at: now, ids: new Set(ids), map };
+    for (const id of threadFactsCache.keys()) if (!watchers.has(id)) threadFactsCache.delete(id);
+    const map = new Map<string, PullRequestThreadFacts>();
+    for (const id of ids) {
+      const facts = threadFactsCache.get(id)?.facts;
+      if (facts) map.set(id, facts);
+    }
     return map;
   };
 
