@@ -6,10 +6,10 @@ import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
 import { closeOwnedPortProcesses } from "./close-owned-ports";
 import { portScanContract, type PortRoot } from "./port-scan-contract";
 import { attribute, parseCwds, parseDockerRows, parseListeners } from "./port-scan";
-import type { OpenPort, ThreadPullRequest } from "./contract";
+import type { OpenPort } from "./contract";
 import { isBbInternalListener, parseProcessCommands } from "./port-processes";
 import { macProcessEnvironment, threadIdFromEnvironment } from "./port-ownership";
-import { parseGhPullRequest } from "./pull-requests";
+import { lookUpPullRequests } from "./pull-request-lookup";
 
 const exec = promisify(execFile);
 
@@ -161,35 +161,6 @@ async function scanPorts(roots: PortRoot[], signal: AbortSignal) {
   return { ports: [...ports.values()] };
 }
 
-// GUI-launched daemons often miss the shell PATH where Homebrew installs gh.
-const GH_PATH = [process.env.PATH, "/opt/homebrew/bin", "/usr/local/bin"].filter(Boolean).join(":");
-
-async function viewPullRequests(urls: string[], signal: AbortSignal) {
-  const pullRequests: ThreadPullRequest[] = [];
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(4, urls.length) }, async () => {
-      while (next < urls.length) {
-        const url = urls[next++]!;
-        try {
-          const { stdout } = await exec("gh", ["pr", "view", url, "--json", "number,title,state,isDraft,url"], {
-            signal,
-            timeout: 10_000,
-            env: { ...process.env, PATH: GH_PATH },
-          });
-          const pullRequest = parseGhPullRequest(stdout);
-          // Keyed by the URL the thread printed, even if the repo was renamed.
-          if (pullRequest) pullRequests.push({ ...pullRequest, url });
-        } catch (error) {
-          if (signal.aborted) throw error;
-          // Missing gh, no access, or a deleted PR: the caller lists it without status.
-        }
-      }
-    }),
-  );
-  return { pullRequests };
-}
-
 export default experimental_defineHostEntry({
   contract: portScanContract,
   handlers: {
@@ -209,8 +180,8 @@ export default experimental_defineHostEntry({
     async scan({ roots }, { signal }) {
       return scanPorts(roots, signal);
     },
-    async pullRequests({ urls }, { signal }) {
-      return viewPullRequests(urls, signal);
+    async lookUpPullRequests({ urls }, { signal }) {
+      return { pullRequests: await lookUpPullRequests(urls, signal) };
     },
     async closeOwnedPorts({ root, threadId, ports, scope }, { signal }) {
       return closeOwnedPortProcesses(

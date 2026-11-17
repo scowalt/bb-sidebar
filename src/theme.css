@@ -115,7 +115,10 @@
 
   --bb-sidebar-pr-merged: var(--bb-sidebar-violet-600);
   --bb-sidebar-pr-alert: var(--bb-sidebar-red-600);
-  --bb-sidebar-pr-open: var(--bb-sidebar-emerald-600);
+  --bb-sidebar-pr-pending: var(--bb-sidebar-amber-700);
+  --bb-sidebar-pr-review: var(--bb-sidebar-sky-600);
+  --bb-sidebar-pr-ready: var(--bb-sidebar-emerald-600);
+  --bb-sidebar-pr-closed: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
 
   /*
    * Letter tiles for projects without an icon, styled like the child badges:
@@ -182,7 +185,10 @@
 
   --bb-sidebar-pr-merged: color-mix(in oklab, var(--bb-sidebar-violet-300) 90%, transparent);
   --bb-sidebar-pr-alert: color-mix(in oklab, var(--bb-sidebar-red-300) 90%, transparent);
-  --bb-sidebar-pr-open: color-mix(in oklab, var(--bb-sidebar-emerald-300) 90%, transparent);
+  --bb-sidebar-pr-pending: color-mix(in oklab, var(--bb-sidebar-amber-300) 90%, transparent);
+  --bb-sidebar-pr-review: color-mix(in oklab, var(--bb-sidebar-sky-300) 90%, transparent);
+  --bb-sidebar-pr-ready: color-mix(in oklab, var(--bb-sidebar-emerald-300) 90%, transparent);
+  --bb-sidebar-pr-closed: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
 
   --bb-sidebar-monogram-0-bg: color-mix(in oklab, var(--bb-sidebar-emerald-950) 80%, transparent);
   --bb-sidebar-monogram-0-fg: var(--bb-sidebar-emerald-300);

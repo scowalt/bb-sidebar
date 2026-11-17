@@ -1,4 +1,5 @@
-import { ThreadLocation, ThreadPullRequest } from "./ThreadMetadata";
+import { ThreadLocation } from "./ThreadMetadata";
+import { PullRequestCount, PullRequestRail } from "./PullRequestRail";
 import { CompactRow } from "./CompactRow";
 import { WokeMarker } from "./WokeMarker";
 import { ShortcutHint, useSidebarThreadSplit, useThreadActions } from "./bb-sdk";
@@ -300,6 +301,7 @@ export function ThreadCard({
                 ),
               }}
               beforeContent={isSettling ? <span aria-hidden="true" className="bb-sidebar-settle-sweep" /> : null}
+              rail={<PullRequestRail threadId={thread.id} visible={isVisible} layout="slim" />}
               fadeContent
               trailing={
                 <span className="pointer-events-none relative flex shrink-0 items-center gap-1.5">
@@ -502,9 +504,10 @@ export function ThreadCard({
                 {thread.activity.backgroundAgents > 0 ? (
                   <ActivityCount label="background agents" count={thread.activity.backgroundAgents} />
                 ) : null}
-                {isVisible ? <ThreadPullRequest environmentId={thread.environment?.id ?? null} /> : null}
+                <PullRequestCount threadId={thread.id} visible={isVisible} />
                 <ProviderGlyph providerId={thread.providerId} provider={provider} />
               </div>
+              <PullRequestRail threadId={thread.id} visible={isVisible} layout={showEnvironment ? "card" : "grid"} />
             </div>
           )}
           {childThreads.length > 0 ? (

@@ -31,6 +31,7 @@ interface InboxContextInputs {
   sidebarSettings: SidebarSettingsValues | null;
   snoozePresets: readonly ConfiguredSnoozePreset[];
   lifecycle: LifecycleApi;
+  lifecycleLoaded: boolean;
   childrenByParentId: ReadonlyMap<string, readonly PluginSidebarThread[]>;
   activeThreadId: string | null;
   now: number;
@@ -56,6 +57,7 @@ export function useInboxContextValues({
   sidebarSettings,
   snoozePresets,
   lifecycle,
+  lifecycleLoaded,
   childrenByParentId,
   activeThreadId,
   now,
@@ -80,6 +82,7 @@ export function useInboxContextValues({
       sidebarSettings,
       snoozePresets,
       lifecycle,
+      lifecycleLoaded,
       childrenByParentId,
     }),
     [
@@ -90,6 +93,7 @@ export function useInboxContextValues({
       sidebarSettings,
       snoozePresets,
       lifecycle,
+      lifecycleLoaded,
       childrenByParentId,
     ],
   );
