@@ -89,6 +89,7 @@ function PullRequestRow({ row }: { row: PullRequestCardRow }) {
   const { entry, status, depth, ref, detail, alsoConflicts } = row;
   const tone = PR_STATUS[status].tone;
   const title = entry.facts?.title;
+  const finished = status === "merged" || status === "closed" || status === "unknown";
   return (
     <li className="min-w-0" style={depth ? { paddingLeft: depth * 12 } : undefined} data-depth={depth}>
       <div className="flex min-w-0 items-start gap-1.5">
@@ -116,8 +117,20 @@ function PullRequestRow({ row }: { row: PullRequestCardRow }) {
             ) : null}
           </div>
           <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
-            <span className={cn("truncate", status === "checks_failed" && PR_TONE_TEXT.alert)}>{detail}</span>
-            {alsoConflicts ? <span className={cn("shrink-0", PR_TONE_TEXT.alert)}>conflicts</span> : null}
+            {finished ? (
+              <span className={cn("truncate", PR_TONE_TEXT[tone])}>
+                {detail.charAt(0).toUpperCase() + detail.slice(1)}
+              </span>
+            ) : (
+              <>
+                <span className={cn("shrink-0", PR_TONE_TEXT[tone])}>{PR_STATUS[status].label}</span>
+                <span aria-hidden className="-mx-0.5 shrink-0 text-muted-foreground/60">
+                  ·
+                </span>
+                <span className={cn("truncate", status === "checks_failed" && PR_TONE_TEXT.alert)}>{detail}</span>
+                {alsoConflicts ? <span className={cn("shrink-0", PR_TONE_TEXT.alert)}>conflicts</span> : null}
+              </>
+            )}
             {entry.facts?.additions != null && entry.facts.deletions != null ? (
               <span className="ml-auto shrink-0 tabular-nums">
                 <span className={PR_TONE_TEXT.ready}>+{entry.facts.additions}</span>{" "}
@@ -126,7 +139,6 @@ function PullRequestRow({ row }: { row: PullRequestCardRow }) {
             ) : null}
           </div>
         </div>
-        <span className={cn("shrink-0 text-[11px] leading-4", PR_TONE_TEXT[tone])}>{PR_STATUS[status].label}</span>
       </div>
     </li>
   );

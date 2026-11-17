@@ -274,15 +274,19 @@ describe("pull requests in the hover card", () => {
       "1",
       "0",
     ]);
+    const detailLine = (text: string) => within(list).getByText(text).parentElement?.textContent;
     expect(within(list).getByText("PR Format / format failed").className).toContain("bb-sidebar-pr-alert");
+    expect(detailLine("PR Format / format failed")).toMatch(/^Checks failed\s*·\s*PR Format \/ format failedconflicts/);
+    expect(detailLine("3 of 19 checks running")).toMatch(/^Checks running\s*·\s*3 of 19 checks running/);
     expect(within(list).getByText("conflicts")).toBeTruthy();
     expect(within(list).getByText("3 of 19 checks running")).toBeTruthy();
-    expect(within(list).getByText("Awaiting review")).toBeTruthy();
+    expect(detailLine("Awaiting review")).toMatch(/^Awaiting review\s*·/);
     expect(within(list).getAllByText("+10")).toHaveLength(3);
     fireEvent.click(within(card).getByRole("button", { name: "Show 2 merged, 1 closed" }));
     expect(refs()).toEqual(["#10", "#11", "#12", "#2", "#1", "#3"]);
-    expect(within(list).getByText("closed")).toBeTruthy();
-    expect(within(list).getAllByText(/^merged \d+d ago$/)).toHaveLength(2);
+    expect(within(list).getByText("Closed").parentElement?.textContent).toMatch(/^Closed\+/);
+    expect(within(list).getAllByText(/^Merged \d+d ago$/)).toHaveLength(2);
+    expect(within(list).queryByText("Merged")).toBeNull();
   });
 
   it("says it is looking while the thread's log has not been scanned", async () => {
