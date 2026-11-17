@@ -63,6 +63,7 @@ export async function createWired(
                 id: item.id,
                 title: item.title,
                 parentThreadId: item.parentThreadId,
+                hasPendingInteraction: item.hasPendingInteraction,
                 pinnedAt: item.pinnedAt,
                 pinSortKey: item.pinSortKey,
                 updatedAt: item.updatedAt,

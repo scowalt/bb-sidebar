@@ -325,6 +325,7 @@ export const bbSidebarRpcContract = defineRpcContract({
           snoozedUntil: z.number().nullable(),
           snoozedAt: z.number().nullable(),
           snoozePending: z.boolean().optional(),
+          snoozedQuestionThreadIds: z.array(z.string()).optional(),
         }),
       ),
     }),

@@ -16,6 +16,7 @@ import { SIDEBAR_SETTINGS_CHANNEL } from "./contract";
 import { INBOX_ORDER_TAG, SIDEBAR_SETTINGS_TAG } from "./rpc-tags";
 import { runThreadTasks } from "./thread-tasks";
 import { isTurnInFlight } from "./lifecycle";
+import { askingThreadsByThread } from "./child-status";
 
 const CATALOG_TTL_MS = 5 * 60_000;
 
@@ -41,7 +42,7 @@ export function createServerHandlers(
   const { reclaimThreadResources } = cleanup;
   const { readOne, readAll, withPinParentChange, write, clear, readInboxOrder, replaceInboxOrder, wakeAncestors } =
     lifecycle;
-  const { loadPolicyThread, startPendingSnooze, dropPendingSnooze } = lifecycle;
+  const { loadPolicyThread, loadPolicyThreads, startPendingSnooze, dropPendingSnooze } = lifecycle;
   const loadThreadTurn = (threadId: string) => loadPolicyThread(threadId, true).catch(() => undefined);
 
   // Hover cards resolve model names on every open. Share one catalog request
@@ -226,6 +227,17 @@ export function createServerHandlers(
       // turn ends instead.
       const before = await loadThreadTurn(threadId);
       const pending = before !== undefined && isTurnInFlight(before.status);
+      // The questions the user is putting off, so that only another one wakes
+      // the snooze. A question asked in the agent's own turn is news, so a
+      // snooze that starts when the turn ends puts nothing off. A failed
+      // listing fails the snooze rather than bouncing it straight back.
+      const snoozedQuestionThreadIds = pending
+        ? []
+        : [
+            ...(askingThreadsByThread(await loadPolicyThreads(true), (thread) => thread.hasPendingInteraction).get(
+              threadId,
+            ) ?? []),
+          ];
       const now = Date.now();
       write({
         threadId,
@@ -234,6 +246,7 @@ export function createServerHandlers(
         snoozedUntil,
         snoozedAt: now,
         snoozePending: pending,
+        snoozedQuestionThreadIds,
       });
       // The turn may have ended before the write, too early for its idle or
       // failed event to find this snooze.
