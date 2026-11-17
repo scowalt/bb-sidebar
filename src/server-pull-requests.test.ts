@@ -309,6 +309,46 @@ it("rescans a working thread on every tick while it is watched", async () => {
   expect((await host.read()).entries.map((entry) => entry.number)).toEqual([10, 11]);
 });
 
+it("looks up at most forty PRs per host per tick, rechecks before routine refreshes, and carries the rest over", async () => {
+  const numbers = Array.from({ length: 41 }, (_, index) => index + 1);
+  const host = await mount({
+    events: { thr_a: numbers.map((number) => created(number, number)) },
+    answer: (target) => found(target, target.endsWith("/41") ? pending : facts()),
+  });
+  keep(host.harness);
+  host.harness.behavior.experimental_watchRpc("getPullRequests", { key: "thr_a" });
+  await tick();
+  expect(host.lookups().flat()).toEqual(numbers.slice(0, 40).map(url));
+  await vi.advanceTimersByTimeAsync(20_000);
+  expect(host.lookups().at(-1)).toEqual([url(41)]);
+  // Two minutes on, every PR is due: the running one goes first and one waits for the next tick.
+  await vi.advanceTimersByTimeAsync(100_000);
+  const capped = host.lookups().slice(-2).flat();
+  expect(capped).toHaveLength(40);
+  expect(capped[0]).toBe(url(41));
+  expect(capped).not.toContain(url(40));
+  await vi.advanceTimersByTimeAsync(20_000);
+  expect(host.lookups().at(-1)).toEqual([url(41), url(40)]);
+});
+
+it("stops looking up a thread's PRs once its last watcher leaves mid-tick", async () => {
+  let unwatch = () => {};
+  const host = await mount({
+    events: { thr_a: Array.from({ length: 25 }, (_, index) => created(index + 1, index + 1)) },
+    answer: (target) => {
+      unwatch();
+      return found(target, facts());
+    },
+  });
+  keep(host.harness);
+  unwatch = host.harness.behavior.experimental_watchRpc("getPullRequests", { key: "thr_a" });
+  await tick();
+  expect(host.hostCall).toHaveBeenCalledTimes(1);
+  expect((await host.read()).entries.filter((entry) => entry.facts === null)).toHaveLength(5);
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(host.hostCall).toHaveBeenCalledTimes(1);
+});
+
 it("shares one host call between watched threads on the same host", async () => {
   const host = await mount({
     events: { thr_a: [created(1, 10)], thr_b: [created(1, 20)] },

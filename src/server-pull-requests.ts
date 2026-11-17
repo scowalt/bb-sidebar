@@ -51,6 +51,8 @@ const PENDING_RECHECK_MS = 15_000;
 const FAILURE_BACKOFF_MS = [60_000, 5 * 60_000, 10 * 60_000, 30 * 60_000] as const;
 const THREAD_FACTS_TTL_MS = 60_000;
 const LOOKUP_CHUNK = 20;
+/** Per host per tick, so a cold start or a long backlog never holds one tick for minutes. */
+const LOOKUPS_PER_HOST_PER_TICK = 40;
 const HOST_CALL_TIMEOUT_MS = 30_000;
 const BRANCH_LOOKUP_TIMEOUT_MS = 60_000;
 
@@ -280,26 +282,36 @@ export function createServerPullRequests(
     })();
   };
 
-  const isDue = (row: StoredUrlRow, now: number) => {
-    if (row.checked_at === null) return true;
+  /**
+   * Whether a PR is due for a lookup: "soon" for one never read, with running
+   * checks, or with Gitea's `mergeable: false` (which also means "still
+   * checking"); "later" for the routine refresh of open PRs and failure
+   * retries; null when it can wait or is finished.
+   */
+  const lookupDue = (row: StoredUrlRow, now: number): "soon" | "later" | null => {
+    if (row.checked_at === null) return "soon";
     const failures = row.failures ?? 0;
-    if (failures > 0)
-      return now - row.checked_at >= FAILURE_BACKOFF_MS[Math.min(failures, FAILURE_BACKOFF_MS.length) - 1]!;
+    if (failures > 0) {
+      const backoff = FAILURE_BACKOFF_MS[Math.min(failures, FAILURE_BACKOFF_MS.length) - 1]!;
+      return now - row.checked_at >= backoff ? "later" : null;
+    }
     const facts = parseFacts(row.facts_json);
-    if (!facts) return true;
+    if (!facts) return "soon";
     const status = pullRequestStatus({ url: row.url, repo: "", number: 0, facts });
-    if (isDone(status)) return false;
-    // Gitea's `mergeable: false` also means "still checking", so it is asked about again soon.
+    if (isDone(status)) return null;
     const soon =
       status === "checks_pending" ||
       row.unconfirmed_conflict === 1 ||
       (status === "conflicts" && parsePullRequestUrl(row.url)?.forge === "gitea");
-    return now - row.checked_at >= (soon ? PENDING_RECHECK_MS : OPEN_RECHECK_MS);
+    if (soon) return now - row.checked_at >= PENDING_RECHECK_MS ? "soon" : null;
+    return now - row.checked_at >= OPEN_RECHECK_MS ? "later" : null;
   };
 
-  const lookUpOnHost = async (hostId: string, urls: readonly string[]) => {
+  const lookUpOnHost = async (hostId: string, urls: readonly string[], stillWanted: (url: string) => boolean) => {
     for (let start = 0; start < urls.length; start += LOOKUP_CHUNK) {
-      const chunk = urls.slice(start, start + LOOKUP_CHUNK);
+      // A watcher may have left during the previous chunk.
+      const chunk = urls.slice(start, start + LOOKUP_CHUNK).filter(stillWanted);
+      if (!chunk.length) continue;
       for (const url of chunk) inFlight.add(url);
       try {
         const { pullRequests } = await host.call(
@@ -359,19 +371,37 @@ export function createServerPullRequests(
       bb.log.debug(`Scanning ${failure.threadId} for pull requests: ${failure.error}`);
     await discoverBranchPullRequests(scanIds, facts);
 
+    // Due URLs by host, ranked: just-watched threads first (their rows are
+    // waiting), then rechecks, then routine refreshes. Each host gets at most
+    // LOOKUPS_PER_HOST_PER_TICK; the rest are due again next tick.
     const now = Date.now();
-    const dueByHost = new Map<string, Set<string>>();
+    const dueByHost = new Map<string, Map<string, number>>();
+    const threadsOf = new Map<string, Set<string>>();
     for (const id of ids) {
       const thread = facts.get(id);
       if (!thread?.hostId || (thread.settled && !kickedNow.has(id))) continue;
       for (const row of urlRows(id)) {
-        if (inFlight.has(row.url) || !isDue(row, now)) continue;
-        let urls = dueByHost.get(thread.hostId);
-        if (!urls) dueByHost.set(thread.hostId, (urls = new Set()));
-        urls.add(row.url);
+        let owners = threadsOf.get(row.url);
+        if (!owners) threadsOf.set(row.url, (owners = new Set()));
+        owners.add(id);
+        const due = inFlight.has(row.url) ? null : lookupDue(row, now);
+        if (!due) continue;
+        const rank = kickedNow.has(id) ? 0 : due === "soon" ? 1 : 2;
+        let ranked = dueByHost.get(thread.hostId);
+        if (!ranked) dueByHost.set(thread.hostId, (ranked = new Map()));
+        ranked.set(row.url, Math.min(rank, ranked.get(row.url) ?? rank));
       }
     }
-    await Promise.all([...dueByHost].map(([hostId, urls]) => lookUpOnHost(hostId, [...urls])));
+    const stillWanted = (url: string) => [...(threadsOf.get(url) ?? [])].some((id) => watchers.has(id));
+    await Promise.all(
+      [...dueByHost].map(([hostId, ranked]) => {
+        const urls = [...ranked]
+          .sort(([, a], [, b]) => a - b)
+          .slice(0, LOOKUPS_PER_HOST_PER_TICK)
+          .map(([url]) => url);
+        return lookUpOnHost(hostId, urls, stillWanted);
+      }),
+    );
 
     const changed = ids.filter((id) => before.get(id) !== JSON.stringify(readOne(id)));
     if (changed.length) bb.rpc.experimental_invalidate(changed.map(pullRequestsTag));
