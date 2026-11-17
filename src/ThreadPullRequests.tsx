@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { UrlLink, type PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { useThreadPullRequests } from "./bb-sdk";
 import { Icon, type IconName } from "./components/Icon";
@@ -81,10 +81,9 @@ export function ThreadPullRequestDetails({ thread }: { thread: PluginSidebarThre
 }
 
 function PullRequestRow({ row }: { row: PullRequestCardRow }) {
-  const { entry, status, depth, ref, detail, alsoConflicts } = row;
+  const { entry, status, depth, ref, statusLine } = row;
   const tone = PR_STATUS[status].tone;
   const title = entry.facts?.title;
-  const finished = status === "merged" || status === "closed" || status === "unknown";
   return (
     <li className="min-w-0" style={depth ? { paddingLeft: depth * 12 } : undefined} data-depth={depth}>
       <div className="flex min-w-0 items-start gap-1.5">
@@ -105,12 +104,6 @@ function PullRequestRow({ row }: { row: PullRequestCardRow }) {
             >
               {ref}
             </UrlLink>
-            <span aria-hidden className="-mx-0.5 shrink-0 text-muted-foreground/60">
-              ·
-            </span>
-            <span className={cn("min-w-0 truncate", PR_TONE_TEXT[tone])}>
-              {finished ? detail.charAt(0).toUpperCase() + detail.slice(1) : PR_STATUS[status].label}
-            </span>
             {entry.facts?.additions != null && entry.facts.deletions != null ? (
               <span className="ml-auto shrink-0 tabular-nums">
                 <span className={PR_TONE_TEXT.ready}>+{entry.facts.additions}</span>{" "}
@@ -123,12 +116,26 @@ function PullRequestRow({ row }: { row: PullRequestCardRow }) {
               {title}
             </div>
           ) : null}
-          {finished ? null : (
-            <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
-              <span className={cn("min-w-0 truncate", status === "checks_failed" && PR_TONE_TEXT.alert)}>{detail}</span>
-              {alsoConflicts ? <span className={cn("shrink-0", PR_TONE_TEXT.alert)}>conflicts</span> : null}
-            </div>
-          )}
+          <div className="flex min-w-0 items-baseline gap-1 text-[11px] leading-4">
+            {statusLine.map((phrase, index) => (
+              <Fragment key={phrase.text}>
+                {index ? (
+                  <span aria-hidden className="shrink-0 text-muted-foreground/60">
+                    ·
+                  </span>
+                ) : null}
+                <span
+                  title={phrase.truncates ? phrase.text : undefined}
+                  className={cn(
+                    phrase.truncates ? "min-w-0 truncate" : "shrink-0",
+                    phrase.tone && PR_TONE_TEXT[phrase.tone],
+                  )}
+                >
+                  {phrase.text}
+                </span>
+              </Fragment>
+            ))}
+          </div>
         </div>
       </div>
     </li>
