@@ -237,6 +237,43 @@ describe("pull request rail", () => {
   });
 });
 
+describe("pull request rails on subthread rows", () => {
+  const tree = (parent: Partial<PluginSidebarThread> = {}) => [
+    thread({ id: "thr_parent", title: "Parent work", ...parent }),
+    thread({ id: "thr_child", title: "Child work", parentThreadId: "thr_parent" }),
+  ];
+  const childRows = { thr_child: { scanned: true, scanFailed: false, entries: [entry(5, failing), entry(6)] } };
+
+  it("draws a rail under each subthread of an expanded live parent, without a count", async () => {
+    const { requested } = mount({ threads: tree(), rows: childRows });
+    fireEvent.click(await screen.findByRole("button", { name: "1 child thread" }));
+    const row = (await screen.findByRole("link", { name: /^Open child thread: Child work/ })).closest<HTMLElement>(
+      "[data-child-thread-row]",
+    )!;
+    const bar = await within(row).findByRole("img", { name: "Pull requests: 0 of 2 merged, 1 failing, 1 ready" });
+    expect(segments(bar)).toEqual(["checks_failed", "ready"]);
+    expect(bar.className).toContain("pointer-events-none");
+    expect(row.className).toContain("relative");
+    expect(within(row).queryByText("0/2")).toBeNull();
+    expect(requested.flat()).toContain("thr_child");
+  });
+
+  it("asks nothing about a subthread of a settled parent, though its row is open", async () => {
+    const { requested } = mount({
+      threads: tree(),
+      lifecycle: [{ threadId: "thr_parent", settledAt: 200, snoozedUntil: null, snoozedAt: null }],
+      rows: childRows,
+    });
+    const settled = await screen.findByRole("region", { name: "Settled" });
+    fireEvent.click(within(settled).getByRole("button", { name: /^Settled/ }));
+    fireEvent.click(await within(settled).findByRole("button", { name: "1 child thread" }));
+    await within(settled).findByRole("link", { name: /^Open child thread: Child work/ });
+    await act(async () => {});
+    expect(requested).toEqual([]);
+    expect(within(settled).queryByRole("img", { name: /^Pull requests/ })).toBeNull();
+  });
+});
+
 describe("pull requests in the hover card", () => {
   async function openCard(rows: ThreadPullRequests) {
     const result = mount({ rows: { thr_pr: rows } });

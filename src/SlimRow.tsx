@@ -103,7 +103,7 @@ export const SlimRow = memo(function SlimRow({
           onRenamingChange={setIsRenaming}
           linkProps={{ "aria-keyshortcuts": rowKeyshortcuts(shortcut?.ariaKeyshortcuts, false) }}
           onOpen={onNavigate}
-          rail={shelf === "settled" ? null : <PullRequestRail threadId={thread.id} visible layout="slim" />}
+          rail={<PullRequestRail threadId={thread.id} visible layout="slim" />}
           trailing={
             <>
               <OpenPortsIndicator thread={thread} />
