@@ -113,8 +113,11 @@ export function pullRequestCard(entries: readonly PullRequestEntry[], now: numbe
     rows.push(row(entry, depth));
     for (const child of children(entry)) walk(child, depth + 1);
   };
+  const rootlessLoops = () => {
+    for (const entry of open) walk(entry, 0);
+  };
   for (const root of roots) walk(root, 0);
-  for (const entry of open) walk(entry, 0);
+  rootlessLoops();
   const doneRows = done.map((entry) => row(entry, 0));
   const merged = done.filter((entry) => pullRequestStatus(entry) === "merged").length;
   const closed = done.length - merged;

@@ -166,6 +166,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 const string = (value: unknown) => (typeof value === "string" ? value : null);
 const integer = (value: unknown) => (typeof value === "number" && Number.isInteger(value) ? value : null);
 
+export const GH_FIELDS =
+  "number,title,state,isDraft,url,mergeable,reviewDecision,statusCheckRollup,headRefName,baseRefName,mergedAt,additions,deletions";
+
 export function parseGhFacts(stdout: string): PullRequestFacts | null {
   let value: unknown;
   try {
@@ -226,7 +229,15 @@ function reduceChecks(checks: readonly CheckOutcome[]): PullRequestChecks {
   };
 }
 
-export function parseGiteaFacts(pull: unknown, status: unknown, reviews: unknown): PullRequestFacts | null {
+interface GiteaOpenPullRequestDetails {
+  status: unknown;
+  reviews: unknown;
+}
+
+export function parseGiteaFacts(
+  pull: unknown,
+  openDetails: GiteaOpenPullRequestDetails | null,
+): PullRequestFacts | null {
   if (!isRecord(pull) || typeof pull.title !== "string") return null;
   const head = isRecord(pull.head) ? pull.head : {};
   const base = isRecord(pull.base) ? pull.base : {};
@@ -239,8 +250,8 @@ export function parseGiteaFacts(pull: unknown, status: unknown, reviews: unknown
     state,
     draft: pull.draft === true,
     mergeable: typeof pull.mergeable === "boolean" ? pull.mergeable : null,
-    checks: giteaChecks(status),
-    review: giteaReview(reviews, requested),
+    checks: giteaChecks(openDetails?.status),
+    review: giteaReview(openDetails?.reviews, requested),
     head: string(head.ref),
     base: string(base.ref),
     mergedAt: string(pull.merged_at),

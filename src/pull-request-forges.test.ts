@@ -276,16 +276,15 @@ describe("parseGiteaFacts", () => {
 
   it("maps an open PR with its checks and reviews", () => {
     expect(
-      parseGiteaFacts(
-        pull(),
-        status([
+      parseGiteaFacts(pull(), {
+        status: status([
           { context: "PR Title / pr-title (pull_request)", status: "success" },
           { context: "PR Backend Tests / C# full suite (pull_request)", status: "failure" },
           { context: "PR Format / format (pull_request)", status: "pending" },
           { context: "nightly (pull_request)", status: "skipped" },
         ]),
-        [review("lore-bot", "COMMENT", "2026-11-15T22:45:17Z")],
-      ),
+        reviews: [review("lore-bot", "COMMENT", "2026-11-15T22:45:17Z")],
+      }),
     ).toEqual({
       title: "feat(customers): show status columns",
       state: "open",
@@ -303,15 +302,15 @@ describe("parseGiteaFacts", () => {
 
   it("reads merged and closed PRs without status or reviews", () => {
     expect(
-      parseGiteaFacts(pull({ state: "closed", merged: true, merged_at: "2026-11-16T03:01:46Z" }), null, null),
+      parseGiteaFacts(pull({ state: "closed", merged: true, merged_at: "2026-11-16T03:01:46Z" }), null),
     ).toMatchObject({
       state: "merged",
       mergedAt: "2026-11-16T03:01:46Z",
       checks: null,
       review: null,
     });
-    expect(parseGiteaFacts(pull({ state: "closed" }), null, null)?.state).toBe("closed");
-    expect(parseGiteaFacts(pull({ draft: true, mergeable: null }), status([]), [])).toMatchObject({
+    expect(parseGiteaFacts(pull({ state: "closed" }), null)?.state).toBe("closed");
+    expect(parseGiteaFacts(pull({ draft: true, mergeable: null }), { status: status([]), reviews: [] })).toMatchObject({
       draft: true,
       mergeable: null,
       checks: null,
@@ -325,24 +324,28 @@ describe("parseGiteaFacts", () => {
       review("bo", "REQUEST_CHANGES", "2026-11-12T10:00:00Z", { dismissed: true }),
       review("cy", "COMMENT", "2026-11-13T10:00:00Z"),
     ];
-    expect(parseGiteaFacts(pull(), status([]), reviews)?.review).toBe("approved");
+    expect(parseGiteaFacts(pull(), { status: status([]), reviews: reviews })?.review).toBe("approved");
     expect(
-      parseGiteaFacts(pull(), status([]), [...reviews, review("bo", "REQUEST_CHANGES", "2026-11-14T10:00:00Z")])
-        ?.review,
+      parseGiteaFacts(pull(), {
+        status: status([]),
+        reviews: [...reviews, review("bo", "REQUEST_CHANGES", "2026-11-14T10:00:00Z")],
+      })?.review,
     ).toBe("changes_requested");
-    expect(parseGiteaFacts(pull(), status([]), [review("dee", "REQUEST_REVIEW", "2026-11-14T10:00:00Z")])?.review).toBe(
-      "review_requested",
-    );
-    expect(parseGiteaFacts(pull({ requested_reviewers: [{ login: "lore-bot" }] }), status([]), [])?.review).toBe(
-      "review_requested",
-    );
+    expect(
+      parseGiteaFacts(pull(), {
+        status: status([]),
+        reviews: [review("dee", "REQUEST_REVIEW", "2026-11-14T10:00:00Z")],
+      })?.review,
+    ).toBe("review_requested");
+    expect(
+      parseGiteaFacts(pull({ requested_reviewers: [{ login: "lore-bot" }] }), { status: status([]), reviews: [] })
+        ?.review,
+    ).toBe("review_requested");
   });
 
   it("rejects what is not a pull request", () => {
-    expect(
-      parseGiteaFacts({ message: "not found", url: "https://git.example.com/api/swagger" }, null, null),
-    ).toBeNull();
-    expect(parseGiteaFacts(null, null, null)).toBeNull();
+    expect(parseGiteaFacts({ message: "not found", url: "https://git.example.com/api/swagger" }, null)).toBeNull();
+    expect(parseGiteaFacts(null, null)).toBeNull();
   });
 });
 

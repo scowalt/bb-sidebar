@@ -1,9 +1,15 @@
 import { z } from "zod";
 import type { ServerContext } from "./server-context";
 import { pullRequestFactsSchema } from "./contract";
-import { portScanContract } from "./port-scan-contract";
+import { PULL_REQUEST_HOST_CALL_TIMEOUT_MS, portScanContract } from "./port-scan-contract";
 import { confirmGiteaConflict, createdPullRequestUrls, parsePullRequestUrl } from "./pull-request-forges";
-import { isDone, pullRequestStatus, type PullRequestFacts, type ThreadPullRequests } from "./pull-request-status";
+import {
+  isDone,
+  pullRequestStatus,
+  type PullRequestFacts,
+  type PullRequestStatus,
+  type ThreadPullRequests,
+} from "./pull-request-status";
 import { pullRequestsTag } from "./rpc-tags";
 import { GITHUB_PR_STATUS_PLUGIN_ID, MAX_PULL_REQUEST_KEYS } from "./github-pr-status";
 import { runThreadTasks } from "./thread-tasks";
@@ -41,7 +47,6 @@ const FAILURE_BACKOFF_MS = [60_000, 5 * 60_000, 10 * 60_000, 30 * 60_000] as con
 const THREAD_FACTS_TTL_MS = 60_000;
 const LOOKUP_CHUNK = 20;
 const LOOKUPS_PER_HOST_PER_TICK = 40;
-const HOST_CALL_TIMEOUT_MS = 30_000;
 const BRANCH_LOOKUP_TIMEOUT_MS = 60_000;
 
 interface PullRequestThreadFacts {
@@ -58,6 +63,9 @@ interface StoredUrlRow {
   failures: number | null;
   unconfirmed_conflict: number | null;
 }
+
+const giteaMayStillBeChecking = (row: StoredUrlRow, status: PullRequestStatus) =>
+  row.unconfirmed_conflict === 1 || (status === "conflicts" && parsePullRequestUrl(row.url)?.forge === "gitea");
 
 const branchRowSchema = z.object({ outcome: z.literal("available"), pullRequest: z.object({ url: z.string() }) });
 
@@ -88,13 +96,13 @@ export function createServerPullRequests(
       ORDER BY t.found_seq, t.rowid`,
   );
   const selectUrl = db.prepare(`SELECT facts_json, unconfirmed_conflict FROM pull_requests WHERE url = ?`);
-  const writeFacts = db.prepare(
+  const writeFactsIfListed = db.prepare(
     `INSERT INTO pull_requests (url, facts_json, checked_at, failures, unconfirmed_conflict)
      SELECT ?, ?, ?, 0, ? WHERE EXISTS (SELECT 1 FROM thread_pull_requests WHERE url = ?)
      ON CONFLICT(url) DO UPDATE SET facts_json = excluded.facts_json, checked_at = excluded.checked_at,
        failures = 0, unconfirmed_conflict = excluded.unconfirmed_conflict`,
   );
-  const writeFailure = db.prepare(
+  const writeFailureIfListed = db.prepare(
     `INSERT INTO pull_requests (url, facts_json, checked_at, failures)
      SELECT ?, NULL, ?, 1 WHERE EXISTS (SELECT 1 FROM thread_pull_requests WHERE url = ?)
      ON CONFLICT(url) DO UPDATE SET checked_at = excluded.checked_at, failures = pull_requests.failures + 1`,
@@ -136,7 +144,7 @@ export function createServerPullRequests(
   });
 
   const watchers = new Map<string, number>();
-  const kicked = new Set<string>();
+  const urgent = new Set<string>();
   const scanFailures = new Map<string, { count: number; at: number }>();
   const working = new Set<string>();
   const inFlight = new Set<string>();
@@ -216,7 +224,7 @@ export function createServerPullRequests(
       afterSeq = lastSeq;
       if (events.length < EVENT_PAGE_SIZE) return;
     }
-    kicked.add(threadId);
+    urgent.add(threadId);
   };
 
   const discoverBranchPullRequests = async (
@@ -268,11 +276,8 @@ export function createServerPullRequests(
     if (!facts) return "soon";
     const status = pullRequestStatus({ url: row.url, repo: "", number: 0, facts });
     if (isDone(status)) return null;
-    const soon =
-      status === "checks_pending" ||
-      row.unconfirmed_conflict === 1 ||
-      (status === "conflicts" && parsePullRequestUrl(row.url)?.forge === "gitea");
-    if (soon) return now - row.checked_at >= PENDING_RECHECK_MS ? "soon" : null;
+    if (status === "checks_pending" || giteaMayStillBeChecking(row, status))
+      return now - row.checked_at >= PENDING_RECHECK_MS ? "soon" : null;
     return now - row.checked_at >= OPEN_RECHECK_MS ? "later" : null;
   };
 
@@ -285,7 +290,7 @@ export function createServerPullRequests(
         const { pullRequests } = await host.call(
           "lookUpPullRequests",
           { urls: chunk },
-          { hostId, timeoutMs: HOST_CALL_TIMEOUT_MS, signal: controller.signal },
+          { hostId, timeoutMs: PULL_REQUEST_HOST_CALL_TIMEOUT_MS, signal: controller.signal },
         );
         const now = Date.now();
         const answered = new Set<string>();
@@ -294,17 +299,17 @@ export function createServerPullRequests(
             answered.add(result.url);
             if (result.outcome === "found") {
               const { facts, unconfirmed } = settleFacts(result.url, result.facts);
-              writeFacts.run(result.url, JSON.stringify(facts), now, unconfirmed ? 1 : 0, result.url);
-            } else writeFailure.run(result.url, now, result.url);
+              writeFactsIfListed.run(result.url, JSON.stringify(facts), now, unconfirmed ? 1 : 0, result.url);
+            } else writeFailureIfListed.run(result.url, now, result.url);
           }
-          for (const url of chunk) if (!answered.has(url)) writeFailure.run(url, now, url);
+          for (const url of chunk) if (!answered.has(url)) writeFailureIfListed.run(url, now, url);
         })();
         hostFailureLogged.delete(hostId);
       } catch (error) {
         if (controller.signal.aborted) return;
         const now = Date.now();
         db.transaction(() => {
-          for (const url of chunk) writeFailure.run(url, now, url);
+          for (const url of chunk) writeFailureIfListed.run(url, now, url);
         })();
         if (!hostFailureLogged.has(hostId)) {
           bb.log.warn(`Pull request lookup on host ${hostId} failed: ${errorMessage(error)}`);
@@ -318,8 +323,8 @@ export function createServerPullRequests(
 
   const tick = async () => {
     const ids = [...watchers.keys()];
-    const kickedNow = new Set(ids.filter((id) => kicked.has(id)));
-    kicked.clear();
+    const urgentNow = new Set(ids.filter((id) => urgent.has(id)));
+    urgent.clear();
     if (!ids.length) return;
     const before = new Map(ids.map((id) => [id, JSON.stringify(readOne(id))]));
     const facts = await threadFacts(ids);
@@ -331,13 +336,13 @@ export function createServerPullRequests(
         Date.now() - failure.at >= FAILURE_BACKOFF_MS[Math.min(failure.count, FAILURE_BACKOFF_MS.length) - 1]!
       );
     };
-    const candidates = ids.filter((id) => kickedNow.has(id) || working.has(id) || retryDue(id));
+    const candidates = ids.filter((id) => urgentNow.has(id) || working.has(id) || retryDue(id));
     const cold = candidates.filter((id) => scanRow(id) === undefined);
-    const coldNow = [...cold.filter((id) => kickedNow.has(id)), ...cold.filter((id) => !kickedNow.has(id))].slice(
+    const coldNow = [...cold.filter((id) => urgentNow.has(id)), ...cold.filter((id) => !urgentNow.has(id))].slice(
       0,
       COLD_SCANS_PER_TICK,
     );
-    for (const id of cold) if (!coldNow.includes(id)) kicked.add(id);
+    for (const id of cold) if (!coldNow.includes(id)) urgent.add(id);
     const scanIds = [...coldNow, ...candidates.filter((id) => !cold.includes(id))];
     const scans = await runThreadTasks(scanIds, scanThread, SCAN_CONCURRENCY);
     const failedScans = new Set(scans.failures.map((failure) => failure.threadId));
@@ -356,14 +361,14 @@ export function createServerPullRequests(
     const threadsOf = new Map<string, Set<string>>();
     for (const id of ids) {
       const thread = facts.get(id);
-      if (!thread?.hostId || (thread.settled && !kickedNow.has(id))) continue;
+      if (!thread?.hostId || (thread.settled && !urgentNow.has(id))) continue;
       for (const row of urlRows(id)) {
         let owners = threadsOf.get(row.url);
         if (!owners) threadsOf.set(row.url, (owners = new Set()));
         owners.add(id);
         const due = inFlight.has(row.url) ? null : lookupDue(row, now);
         if (!due) continue;
-        const rank = kickedNow.has(id) ? 0 : due === "soon" ? 1 : 2;
+        const rank = urgentNow.has(id) ? 0 : due === "soon" ? 1 : 2;
         let ranked = dueByHost.get(thread.hostId);
         if (!ranked) dueByHost.set(thread.hostId, (ranked = new Map()));
         ranked.set(row.url, Math.min(rank, ranked.get(row.url) ?? rank));
@@ -391,7 +396,7 @@ export function createServerPullRequests(
     watch(threadId: string, signal: AbortSignal) {
       if (signal.aborted) return;
       watchers.set(threadId, (watchers.get(threadId) ?? 0) + 1);
-      kicked.add(threadId);
+      urgent.add(threadId);
       signal.addEventListener(
         "abort",
         () => {
@@ -409,12 +414,12 @@ export function createServerPullRequests(
     turnEnded(threadId: string) {
       working.delete(threadId);
       if (!watchers.has(threadId)) return;
-      kicked.add(threadId);
+      urgent.add(threadId);
       schedule(DEBOUNCE_MS);
     },
     forget(threadId: string) {
       working.delete(threadId);
-      kicked.delete(threadId);
+      urgent.delete(threadId);
       scanFailures.delete(threadId);
       db.transaction(() => {
         deleteThreadUrls.run(threadId);

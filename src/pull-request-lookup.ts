@@ -2,14 +2,20 @@ import { execFile } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { PullRequestLookupResult } from "./port-scan-contract";
-import { parseGhFacts, parseGiteaFacts, parsePullRequestUrl, type PullRequestIdentity } from "./pull-request-forges";
+import { PULL_REQUEST_HOST_CALL_TIMEOUT_MS, type PullRequestLookupResult } from "./port-scan-contract";
+import {
+  GH_FIELDS,
+  parseGhFacts,
+  parseGiteaFacts,
+  parsePullRequestUrl,
+  type PullRequestIdentity,
+} from "./pull-request-forges";
 import type { PullRequestFacts } from "./pull-request-status";
 
 const exec = promisify(execFile);
 
 const COMMAND_TIMEOUT_MS = 8_000;
-const OVERALL_DEADLINE_MS = 25_000;
+const OVERALL_DEADLINE_MS = PULL_REQUEST_HOST_CALL_TIMEOUT_MS - 5_000;
 const WORKERS = 6;
 const LOGINS_TTL_MS = 5 * 60_000;
 const PAGE_SIZE = 50;
@@ -24,8 +30,6 @@ const PATH = [
 ]
   .filter(Boolean)
   .join(":");
-const GH_FIELDS =
-  "number,title,state,isDraft,url,mergeable,reviewDecision,statusCheckRollup,headRefName,baseRefName,mergedAt,additions,deletions";
 
 type Failed = Extract<PullRequestLookupResult, { outcome: "failed" }>;
 
@@ -162,13 +166,13 @@ async function lookUpGitea(identity: PullRequestIdentity, signal: AbortSignal): 
   const sha = isRecord(detail.head) && typeof detail.head.sha === "string" ? detail.head.sha : null;
   if (!terminal && !sha) throw new LookupFailure("error", "Gitea named no head commit for an open pull request");
   // The combined state is derived from every status, not read from a page's `state`.
-  const [statuses, reviews] = terminal
-    ? [null, null]
+  const openDetails = terminal
+    ? null
     : await Promise.all([
         teaList(login.name, `${base}/commits/${sha}/status`, signal, statusPage),
         teaList(login.name, `${base}/pulls/${identity.number}/reviews`, signal, reviewPage),
-      ]);
-  const facts = parseGiteaFacts(pull, statuses && { statuses }, reviews);
+      ]).then(([statuses, reviews]) => ({ status: { statuses }, reviews }));
+  const facts = parseGiteaFacts(pull, openDetails);
   if (!facts) throw new LookupFailure("error", "Gitea returned no pull request");
   return facts;
 }

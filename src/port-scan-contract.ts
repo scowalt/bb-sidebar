@@ -17,6 +17,7 @@ export const pullRequestLookupResultSchema = z.discriminatedUnion("outcome", [
   }),
 ]);
 export type PullRequestLookupResult = z.infer<typeof pullRequestLookupResultSchema>;
+export const PULL_REQUEST_HOST_CALL_TIMEOUT_MS = 30_000;
 
 const rootSchema = z.object({ environmentId: z.string(), path: z.string().min(1) });
 export type PortRoot = z.infer<typeof rootSchema>;
