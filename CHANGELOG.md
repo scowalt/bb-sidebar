@@ -2,10 +2,6 @@
 
 ## [Unreleased]
 
-### Added
-
-- **A thread that needs you can be snoozed.** When an agent asks a question you cannot answer yet, Snooze on the card, in the row menu, in the command palette and through `bb sidebar snooze` puts it off until the time you pick. The question that was waiting when you snoozed, and any its subthreads were already asking, no longer bring the thread back. It returns at the snooze time, when it gets new activity, or when another thread in its tree asks something. A snooze set while no question was waiting still ends at the first question, as before. Park, Settle and Archive still wait for an answer.
-
 ### Changed
 
 - **New default settings.** A new install, and any install that has never saved its sidebar settings, now starts with shelves docked to the bottom, child threads listed newest first with their provider icons instead of colour circles, and project colors on with no stripes: project names are coloured and rows have no stripe. "Dock shelves to the bottom" is no longer marked experimental. "Settle quiet threads" is now off for new installs. An install that already had sidebar data keeps settling quiet threads, as with "Settle finished pull requests" when that became opt-in: the switch stays on until you turn it off, and saving any other setting keeps it on. Saved settings keep their values.
@@ -17,6 +13,12 @@
 ### Fixed
 
 - **The agent's own port is no longer listed as a workspace port.** Claude Code listens on a local port for the network proxy of its command sandbox, and bb starts it in the thread's workspace, so the sidebar listed that port under "Workspace ports" and put the port icon on the row, as if the thread had started a server. The stop button in the hover card, Clean in the Settled shelf and "Close ports" after a settle then stopped the agent itself, and the sidebar never settled the thread for you while its agent was loaded, whichever automatic-settle rule applied. The port scan now leaves out the process bb started as the thread's agent, for every provider. Servers the agent starts are still listed and can still be stopped. Google Antigravity's agent opens a second port from a helper process, which is still listed.
+
+## [0.3.14] - 2026-11-17
+
+### Added
+
+- **A thread that needs you can be snoozed.** When an agent asks a question you cannot answer yet, Snooze on the card, in the row menu, in the command palette and through `bb sidebar snooze` puts it off until the time you pick. The question that was waiting when you snoozed, and any its subthreads were already asking, no longer bring the thread back. It returns at the snooze time, when it gets new activity, or when another thread in its tree asks something. A snooze set while no question was waiting still ends at the first question, as before. Park, Settle and Archive still wait for an answer.
 
 ## [0.3.13] - 2026-11-17
 
