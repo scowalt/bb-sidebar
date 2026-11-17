@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { createdPullRequestUrls, parseGhFacts, parseGiteaFacts, parsePullRequestUrl } from "./pull-request-forges";
+import {
+  confirmGiteaConflict,
+  createdPullRequestUrls,
+  parseGhFacts,
+  parseGiteaFacts,
+  parsePullRequestUrl,
+} from "./pull-request-forges";
+import { facts } from "./pull-request-status.test";
 
 function command(command: string, aggregatedOutput: string, type = "item/completed") {
   return { type, data: { item: { type: "commandExecution", command, aggregatedOutput } } };
@@ -328,5 +335,48 @@ describe("parseGiteaFacts", () => {
       parseGiteaFacts({ message: "not found", url: "https://git.example.com/api/swagger" }, null, null),
     ).toBeNull();
     expect(parseGiteaFacts(null, null, null)).toBeNull();
+  });
+});
+
+describe("confirmGiteaConflict", () => {
+  const conflicting = facts({ mergeable: false });
+  const clean = facts({ mergeable: true });
+
+  it("withholds the first `mergeable: false`, since Gitea also says it while still checking", () => {
+    expect(confirmGiteaConflict({ facts: null, unconfirmed: false }, conflicting)).toEqual({
+      facts: { ...conflicting, mergeable: null },
+      unconfirmed: true,
+    });
+    expect(confirmGiteaConflict({ facts: clean, unconfirmed: false }, conflicting)).toEqual({
+      facts: { ...conflicting, mergeable: null },
+      unconfirmed: true,
+    });
+  });
+
+  it("shows the conflict once two lookups in a row agree, and keeps showing it", () => {
+    expect(
+      confirmGiteaConflict({ facts: { ...conflicting, mergeable: null }, unconfirmed: true }, conflicting),
+    ).toEqual({ facts: conflicting, unconfirmed: false });
+    expect(confirmGiteaConflict({ facts: conflicting, unconfirmed: false }, conflicting)).toEqual({
+      facts: conflicting,
+      unconfirmed: false,
+    });
+  });
+
+  it("passes every other answer through and forgets an unconfirmed one", () => {
+    expect(confirmGiteaConflict({ facts: null, unconfirmed: true }, clean)).toEqual({
+      facts: clean,
+      unconfirmed: false,
+    });
+    const unknown = facts({ mergeable: null });
+    expect(confirmGiteaConflict({ facts: conflicting, unconfirmed: false }, unknown)).toEqual({
+      facts: unknown,
+      unconfirmed: false,
+    });
+    const merged = facts({ state: "merged", mergeable: false });
+    expect(confirmGiteaConflict({ facts: null, unconfirmed: false }, merged)).toEqual({
+      facts: merged,
+      unconfirmed: false,
+    });
   });
 });

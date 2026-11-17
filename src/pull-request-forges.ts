@@ -203,6 +203,22 @@ export function parseGiteaFacts(pull: unknown, status: unknown, reviews: unknown
   };
 }
 
+/**
+ * Gitea answers `mergeable: false` on a conflict, but also while it is still
+ * checking a push and after a check errored. One such answer is withheld
+ * (stored with `mergeable: null`, so the status comes from the other facts);
+ * two in a row are a conflict. `unconfirmed` is the withheld state, kept by
+ * the caller between lookups.
+ */
+export function confirmGiteaConflict(
+  previous: { facts: PullRequestFacts | null; unconfirmed: boolean },
+  next: PullRequestFacts,
+): { facts: PullRequestFacts; unconfirmed: boolean } {
+  if (next.state !== "open" || next.mergeable !== false) return { facts: next, unconfirmed: false };
+  if (previous.unconfirmed || previous.facts?.mergeable === false) return { facts: next, unconfirmed: false };
+  return { facts: { ...next, mergeable: null }, unconfirmed: true };
+}
+
 /** Gitea's combined status: `total_count` 0 means no CI reported, which is not a failure. */
 function giteaChecks(status: unknown): PullRequestChecks | null {
   if (!isRecord(status) || !Array.isArray(status.statuses) || status.statuses.length === 0) return null;

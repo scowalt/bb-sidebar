@@ -7,7 +7,7 @@ import { z } from "zod";
 import type { ServerContext } from "./server-context";
 import { pullRequestFactsSchema } from "./contract";
 import { portScanContract } from "./port-scan-contract";
-import { createdPullRequestUrls, parsePullRequestUrl } from "./pull-request-forges";
+import { confirmGiteaConflict, createdPullRequestUrls, parsePullRequestUrl } from "./pull-request-forges";
 import { isDone, pullRequestStatus, type PullRequestFacts, type ThreadPullRequests } from "./pull-request-status";
 import { pullRequestsTag } from "./rpc-tags";
 import { GITHUB_PR_STATUS_PLUGIN_ID, MAX_PULL_REQUEST_KEYS } from "./github-pr-status";
@@ -30,6 +30,9 @@ export const PULL_REQUESTS_MIGRATIONS = [
      checked_at  INTEGER NOT NULL,
      failures    INTEGER NOT NULL DEFAULT 0
    )`,
+  // The last lookup was Gitea's first `mergeable: false` in a row, withheld
+  // until a second one confirms it (`confirmGiteaConflict`).
+  `ALTER TABLE pull_requests ADD COLUMN unconfirmed_conflict INTEGER NOT NULL DEFAULT 0`,
 ];
 
 // bb rejects event pages larger than 100.
@@ -43,7 +46,7 @@ const TICK_MS = 20_000;
 /** A whole sidebar mounting at once lands in one tick. */
 const DEBOUNCE_MS = 250;
 const OPEN_RECHECK_MS = 2 * 60_000;
-/** Below the tick, so running checks are asked about on every tick. */
+/** Below the tick, so running checks and Gitea's `mergeable: false` are asked about on every tick. */
 const PENDING_RECHECK_MS = 15_000;
 const FAILURE_BACKOFF_MS = [60_000, 5 * 60_000, 10 * 60_000, 30 * 60_000] as const;
 const THREAD_FACTS_TTL_MS = 60_000;
@@ -64,6 +67,7 @@ interface StoredUrlRow {
   facts_json: string | null;
   checked_at: number | null;
   failures: number | null;
+  unconfirmed_conflict: number | null;
 }
 
 const branchRowSchema = z.object({ outcome: z.literal("available"), pullRequest: z.object({ url: z.string() }) });
@@ -90,17 +94,19 @@ export function createServerPullRequests(
     `INSERT OR IGNORE INTO thread_pull_requests (thread_id, url, found_seq) VALUES (?, ?, ?)`,
   );
   const selectThreadUrls = db.prepare(
-    `SELECT t.url, p.facts_json, p.checked_at, p.failures
+    `SELECT t.url, p.facts_json, p.checked_at, p.failures, p.unconfirmed_conflict
        FROM thread_pull_requests t LEFT JOIN pull_requests p ON p.url = t.url
       WHERE t.thread_id = ?
       ORDER BY t.found_seq, t.rowid`,
   );
+  const selectUrl = db.prepare(`SELECT facts_json, unconfirmed_conflict FROM pull_requests WHERE url = ?`);
   // Writes land only for URLs some thread still lists, so a thread deleted
   // mid-lookup leaves nothing behind.
   const writeFacts = db.prepare(
-    `INSERT INTO pull_requests (url, facts_json, checked_at, failures)
-     SELECT ?, ?, ?, 0 WHERE EXISTS (SELECT 1 FROM thread_pull_requests WHERE url = ?)
-     ON CONFLICT(url) DO UPDATE SET facts_json = excluded.facts_json, checked_at = excluded.checked_at, failures = 0`,
+    `INSERT INTO pull_requests (url, facts_json, checked_at, failures, unconfirmed_conflict)
+     SELECT ?, ?, ?, 0, ? WHERE EXISTS (SELECT 1 FROM thread_pull_requests WHERE url = ?)
+     ON CONFLICT(url) DO UPDATE SET facts_json = excluded.facts_json, checked_at = excluded.checked_at,
+       failures = 0, unconfirmed_conflict = excluded.unconfirmed_conflict`,
   );
   const writeFailure = db.prepare(
     `INSERT INTO pull_requests (url, facts_json, checked_at, failures)
@@ -121,6 +127,16 @@ export function createServerPullRequests(
     } catch {
       return null;
     }
+  };
+
+  /** What a found answer stores: Gitea's first `mergeable: false` in a row is withheld. */
+  const settleFacts = (url: string, next: PullRequestFacts) => {
+    if (parsePullRequestUrl(url)?.forge !== "gitea") return { facts: next, unconfirmed: false };
+    const previous = selectUrl.get(url) as Pick<StoredUrlRow, "facts_json" | "unconfirmed_conflict"> | undefined;
+    return confirmGiteaConflict(
+      { facts: parseFacts(previous?.facts_json ?? null), unconfirmed: previous?.unconfirmed_conflict === 1 },
+      next,
+    );
   };
 
   const readOne = (threadId: string): ThreadPullRequests => ({
@@ -266,7 +282,12 @@ export function createServerPullRequests(
     if (!facts) return true;
     const status = pullRequestStatus({ url: row.url, repo: "", number: 0, facts });
     if (isDone(status)) return false;
-    return now - row.checked_at >= (status === "checks_pending" ? PENDING_RECHECK_MS : OPEN_RECHECK_MS);
+    // Gitea's `mergeable: false` also means "still checking", so it is asked about again soon.
+    const soon =
+      status === "checks_pending" ||
+      row.unconfirmed_conflict === 1 ||
+      (status === "conflicts" && parsePullRequestUrl(row.url)?.forge === "gitea");
+    return now - row.checked_at >= (soon ? PENDING_RECHECK_MS : OPEN_RECHECK_MS);
   };
 
   const lookUpOnHost = async (hostId: string, urls: readonly string[]) => {
@@ -284,8 +305,10 @@ export function createServerPullRequests(
         db.transaction(() => {
           for (const result of pullRequests) {
             answered.add(result.url);
-            if (result.outcome === "found") writeFacts.run(result.url, JSON.stringify(result.facts), now, result.url);
-            else writeFailure.run(result.url, now, result.url);
+            if (result.outcome === "found") {
+              const { facts, unconfirmed } = settleFacts(result.url, result.facts);
+              writeFacts.run(result.url, JSON.stringify(facts), now, unconfirmed ? 1 : 0, result.url);
+            } else writeFailure.run(result.url, now, result.url);
           }
           for (const url of chunk) if (!answered.has(url)) writeFailure.run(url, now, url);
         })();

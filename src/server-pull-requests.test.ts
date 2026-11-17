@@ -181,6 +181,44 @@ it("asks again about running checks every tick, open PRs after two minutes, and 
   ).toHaveLength(1);
 });
 
+it("shows a Gitea conflict only once two lookups in a row report one, asking again at the pending pace", async () => {
+  let mergeable: boolean | null = false;
+  const host = await mount({
+    events: {
+      thr_a: [
+        created(1, 10),
+        {
+          seq: 2,
+          type: "item/completed",
+          data: {
+            item: {
+              type: "commandExecution",
+              command: "gh pr create",
+              aggregatedOutput: "https://github.com/o/r/pull/7",
+            },
+          },
+        },
+      ],
+    },
+    answer: (target) => found(target, facts({ mergeable })),
+  });
+  keep(host.harness);
+  host.harness.behavior.experimental_watchRpc("getPullRequests", { key: "thr_a" });
+  await tick();
+  const mergeableOf = async (number: number) =>
+    (await host.read()).entries.find((entry) => entry.number === number)?.facts?.mergeable;
+  // Gitea says false while it is still checking too; GitHub's CONFLICTING is definite.
+  expect(await mergeableOf(10)).toBeNull();
+  expect(await mergeableOf(7)).toBe(false);
+  await vi.advanceTimersByTimeAsync(20_000);
+  expect(host.lookups().at(-1)).toEqual([url(10)]);
+  expect(await mergeableOf(10)).toBe(false);
+  mergeable = true;
+  await vi.advanceTimersByTimeAsync(20_000);
+  expect(host.lookups()).toHaveLength(3);
+  expect(await mergeableOf(10)).toBe(true);
+});
+
 it("looks a settled thread up when it is watched and never on later ticks", async () => {
   const host = await mount({
     events: { thr_a: [created(1, 11)] },
