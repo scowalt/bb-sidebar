@@ -48,7 +48,6 @@ const found = (target: string, value: PullRequestFacts): PullRequestLookupResult
 const onHost = (overrides: Partial<ProjectThread> & { id: string }) =>
   projectThread({ environmentId: `env_${overrides.id}`, environmentHostId: "host_a", ...overrides });
 
-/** bb's thread list, as the tracker's targeted lookups use it: by id, unknown ids left out. */
 function threadList(threads: ProjectThread[]) {
   return vi.fn(async (args?: { threadIds?: readonly string[]; limit?: number; offset?: number }) => {
     const matching = args?.threadIds ? threads.filter((thread) => args.threadIds!.includes(thread.id)) : threads;
@@ -266,10 +265,8 @@ it("places a newly watched thread by reading it and its parents, never by listin
   host.harness.behavior.experimental_watchRpc("getPullRequests", { key: "thr_b" });
   await tick();
   expect(host.lookups()).toEqual([[url(10)], [url(20)]]);
-  // Each thread is asked for by id, then its parent; no call lists everything.
   expect(threadsList.mock.calls.slice(since).map(([args]) => args?.threadIds ?? "all")).toEqual([["thr_b"]]);
   expect(threadsList.mock.calls.map(([args]) => args?.threadIds ?? "all")).toContainEqual(["thr_top"]);
-  // thr_a sits on its settled parent's row: looked up at watch time and never again.
   await vi.advanceTimersByTimeAsync(150_000);
   expect(
     host
@@ -341,7 +338,6 @@ it("looks up at most forty PRs per host per tick, rechecks before routine refres
   expect(host.lookups().flat()).toEqual(numbers.slice(0, 40).map(url));
   await vi.advanceTimersByTimeAsync(20_000);
   expect(host.lookups().at(-1)).toEqual([url(41)]);
-  // Two minutes on, every PR is due: the running one goes first and one waits for the next tick.
   await vi.advanceTimersByTimeAsync(100_000);
   const capped = host.lookups().slice(-2).flat();
   expect(capped).toHaveLength(40);
@@ -396,7 +392,6 @@ it("keeps the previous facts when a lookup fails and backs off before asking aga
   expect(host.lookups()).toHaveLength(2);
   await vi.advanceTimersByTimeAsync(20_000);
   expect(host.lookups()).toHaveLength(3);
-  // A thread whose list did not change is not invalidated again.
   expect(host.invalidations()).toEqual([[TAG]]);
 });
 

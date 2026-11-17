@@ -31,7 +31,6 @@ interface InboxContextInputs {
   sidebarSettings: SidebarSettingsValues | null;
   snoozePresets: readonly ConfiguredSnoozePreset[];
   lifecycle: LifecycleApi;
-  /** Lifecycle rows have loaded, so a row's shelf is known. Start no per-row read before then. */
   lifecycleLoaded: boolean;
   childrenByParentId: ReadonlyMap<string, readonly PluginSidebarThread[]>;
   activeThreadId: string | null;

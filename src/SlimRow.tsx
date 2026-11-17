@@ -103,7 +103,6 @@ export const SlimRow = memo(function SlimRow({
           onRenamingChange={setIsRenaming}
           linkProps={{ "aria-keyshortcuts": rowKeyshortcuts(shortcut?.ariaKeyshortcuts, false) }}
           onOpen={onNavigate}
-          // A settled thread is done: no rail, and no watch that would poll it.
           rail={shelf === "settled" ? null : <PullRequestRail threadId={thread.id} visible layout="slim" />}
           trailing={
             <>

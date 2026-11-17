@@ -115,7 +115,6 @@ describe("createdPullRequestUrls", () => {
   it("holds a command that names its repo to that repo, and a PATCH to that PR", () => {
     expect(
       createdPullRequestUrls([
-        // A PR body that links another repo's PR is printed back with the create.
         command("tea pr create --repo o/r --title t", `${gitea(1)}\nSee also ${gitea(40, "o/other")}`),
         command("gh pr create -R o/r --fill", `${github(2)}\n${github(41, "o/other")}`),
         command(`tea api -X PATCH repos/o/r/pulls/12 -d '{"base":"main"}'`, `${gitea(12)}\n${gitea(13)}`),

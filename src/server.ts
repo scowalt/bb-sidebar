@@ -181,8 +181,6 @@ export default async function plugin(bb: BbPluginApi) {
   const rateLimits = createServerRateLimits(ctx, lifecycle);
   const sideChats = createServerSideChats(ctx, lifecycle);
   ctx.bb.rpc.register(bbSidebarRpcContract, { ...handlers, ...rateLimits, ...sideChats });
-  // A row on screen watches its thread's key; the tracker scans and refreshes
-  // that thread until the last client leaves.
   ctx.bb.rpc.experimental_whileWatched("getPullRequests", (read, signal) => {
     if ("key" in read) pullRequests.watch(read.key, signal);
   });

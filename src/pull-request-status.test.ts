@@ -39,8 +39,6 @@ export function entry(number: number, value: Partial<PullRequestFacts> | null = 
 }
 
 describe("pullRequestStatus", () => {
-  // One row per step of the derivation, each with the later steps' triggers
-  // present too, so the order is what the test pins down.
   const cases: Array<[PullRequestStatus, Partial<PullRequestFacts> | null]> = [
     ["unknown", null],
     ["merged", { state: "merged", draft: true, checks: { total: 1, passed: 0, pending: 0, failing: ["ci"] } }],

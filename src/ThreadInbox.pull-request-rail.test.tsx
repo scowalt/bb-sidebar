@@ -91,7 +91,6 @@ describe("pull request rail", () => {
         },
       },
     });
-    // Merged first, then open work by number, then closed: progress, not urgency.
     const bar = await rail("Pull requests: 1 of 4 merged, 1 failing, 1 running");
     expect(segments(bar)).toEqual(["merged", "checks_pending", "checks_failed", "closed"]);
     const pending = bar.querySelector('[data-status="checks_pending"]')!;

@@ -38,8 +38,6 @@ describe("pullRequestCard", () => {
   });
 
   it("lists every PR once when branch bases form a loop, with a root leading into it", () => {
-    // main→release, feat→main, main→feat and hotfix→release: two roots, one of
-    // which reaches the feat/main loop.
     const card = pullRequestCard(
       [
         entry(1, { head: "main", base: "release" }),
@@ -58,8 +56,6 @@ describe("pullRequestCard", () => {
   });
 
   it("survives a release flow's back-merge and still sorts roots by their worst subtree", () => {
-    // A hotfix, main→staging, main→release and the back-merge release→main:
-    // the failing PR sits inside the loop, so the root that reaches it goes first.
     const card = pullRequestCard(
       [
         entry(1, { head: "hotfix", base: "staging" }),

@@ -1,6 +1,3 @@
-// What the forges print and answer: PR URLs in a thread's command log, and
-// the JSON `gh pr view` and `tea api` return. Pure, so fixtures test it
-// without spawning anything.
 import type { PullRequestChecks, PullRequestFacts } from "./pull-request-status";
 
 export type Forge = "github" | "gitea";
@@ -8,14 +5,12 @@ export type Forge = "github" | "gitea";
 export interface PullRequestIdentity {
   forge: Forge;
   origin: string;
-  /** "owner/repo" as printed. */
   repo: string;
   number: number;
 }
 
 const PULL_REQUEST_URL = /^(https?:\/\/[\w.-]+(?::\d+)?)\/([\w.-]+\/[\w.-]+)\/pulls?\/(\d+)$/;
 
-/** github.com is GitHub; every other origin is a Gitea the host has a `tea` login for. */
 export function parsePullRequestUrl(url: string): PullRequestIdentity | null {
   const match = PULL_REQUEST_URL.exec(url);
   if (!match) return null;
@@ -28,31 +23,17 @@ export function parsePullRequestUrl(url: string): PullRequestIdentity | null {
   };
 }
 
-// A command runs at the start, after a shell separator, a `$(` or a `{`, at
-// the start of a line or statement after `do`, `then` or `else`, or as the
-// script of a `zsh -lc "…"` wrapper (how Codex records commands), with
-// optional `VAR=x`, `timeout 60` and path prefixes. Mentions inside quotes or
-// prose, like a grep for the phrase or `echo "(gh pr create)"`, do not count.
 const ANCHOR =
   String.raw`(?:^(?:[\w./-]*\/)?(?:ba|z)?sh\s+-[a-z]*c\s+["']|^|[\n;&|{]|\$\(|(?:^|[\n;])\s*(?:do|then|else)\s)\s*` +
   String.raw`(?:\w+=\S*\s+)*(?:(?:timeout|nice|nohup|command|exec)\s+(?:-\S+\s+)*(?:\d+[smh]?\s+)?)?(?:[\w./-]*\/)?`;
-// The rest of the command up to the next separator: where its options are.
 const REST = String.raw`([^\n;&|]*)`;
 const GH_CREATE = new RegExp(`${ANCHOR}gh\\s+pr\\s+create\\b${REST}`, "g");
 const TEA_CREATE = new RegExp(`${ANCHOR}tea\\s+(?:pr|pulls?)\\s+(?:create|c)\\b${REST}`, "g");
 const TEA_API = new RegExp(`${ANCHOR}tea\\s+api\\b${REST}`, "g");
 const REPO_OPTION = /(?:^|\s)(?:--repo|-[Rr])[\s=]+["']?([\w.-]+\/[\w.-]+)/;
-// `repos/o/r/pulls`, `repos/o/$1/pulls`, `repos/$REPO/pulls` or `$R/pulls/$n`,
-// as one whole argument: the segments may be shell variables or tea's
-// `{owner}` placeholders, which name no repo. `/pulls/12/merge` and
-// `/pulls/12/reviews` never count as writing a PR.
 const API_PULLS_PATH = /^\/?(?:api\/v1\/)?(?:repos\/([^/]+\/[^/]+|\$\{?\w+\}?)|\$\{?\w+\}?)\/pulls(?:\/([^/]+))?$/;
 const isLiteral = (segment: string | undefined): segment is string => segment !== undefined && !/[${]/.test(segment);
 
-/**
- * The words of a command's options, quotes removed and `$(…)` kept whole, up
- * to a `#` that starts a comment.
- */
 function shellWords(rest: string): string[] {
   const words: string[] = [];
   let word = "";
@@ -90,7 +71,6 @@ function shellWords(rest: string): string[] {
   return words;
 }
 
-/** `tea api` options that take a value, so the word after them is not the endpoint. */
 const TEA_API_VALUE_OPTIONS = new Set([
   "-X",
   "--method",
@@ -112,7 +92,6 @@ const TEA_API_VALUE_OPTIONS = new Set([
   "--remote",
 ]);
 
-/** The method and endpoint of one `tea api` invocation, from its own arguments only. */
 function teaApiTarget(rest: string): { method: string | null; path: string | null } {
   let method: string | null = null;
   let path: string | null = null;
@@ -140,11 +119,6 @@ type Acceptance = (identity: PullRequestIdentity) => boolean;
 
 const sameRepo = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
-/**
- * What PRs each PR-writing command in `command` may have printed. A command
- * that names its repo (`--repo o/r`, `-R o/r`, or an API path) vouches only
- * for that repo; a PATCH of one PR vouches only for it.
- */
 function acceptances(command: string): Acceptance[] {
   const accepted: Acceptance[] = [];
   const byRepoOption = (rest: string): Acceptance => {
@@ -167,12 +141,8 @@ function acceptances(command: string): Acceptance[] {
   return accepted;
 }
 
-/**
- * PR URLs printed by commands that write a PR (`gh pr create`, `tea pr
- * create`, `tea api -X POST|PATCH …/pulls[/N]`), oldest first, deduped. A
- * failed create that reports "a pull request already exists" names the
- * thread's PR too, so the command status is not checked.
- */
+// A failed `gh pr create` that reports "a pull request already exists" prints
+// the existing PR's URL, so the command's exit status is not checked.
 export function createdPullRequestUrls(events: readonly { type: string; data: unknown }[]): string[] {
   const urls = new Set<string>();
   for (const event of events) {
@@ -196,10 +166,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 const string = (value: unknown) => (typeof value === "string" ? value : null);
 const integer = (value: unknown) => (typeof value === "number" && Number.isInteger(value) ? value : null);
 
-/**
- * `gh pr view <url> --json number,title,state,isDraft,url,mergeable,reviewDecision,statusCheckRollup,headRefName,baseRefName,mergedAt,additions,deletions`.
- * Null when the JSON does not describe a PR.
- */
 export function parseGhFacts(stdout: string): PullRequestFacts | null {
   let value: unknown;
   try {
@@ -260,12 +226,6 @@ function reduceChecks(checks: readonly CheckOutcome[]): PullRequestChecks {
   };
 }
 
-/**
- * `tea api repos/o/r/pulls/N`, with the head commit's combined status
- * (`…/commits/<sha>/status`) and the PR's reviews (`…/pulls/N/reviews`).
- * Both are null for a merged or closed PR, which needs neither. Null when the
- * pull does not describe a PR.
- */
 export function parseGiteaFacts(pull: unknown, status: unknown, reviews: unknown): PullRequestFacts | null {
   if (!isRecord(pull) || typeof pull.title !== "string") return null;
   const head = isRecord(pull.head) ? pull.head : {};
@@ -305,7 +265,6 @@ export function confirmGiteaConflict(
   return { facts: { ...next, mergeable: null }, unconfirmed: true };
 }
 
-/** Gitea's combined status: `total_count` 0 means no CI reported, which is not a failure. */
 function giteaChecks(status: unknown): PullRequestChecks | null {
   if (!isRecord(status) || !Array.isArray(status.statuses) || status.statuses.length === 0) return null;
   return reduceChecks(
@@ -320,7 +279,6 @@ function giteaChecks(status: unknown): PullRequestChecks | null {
   );
 }
 
-/** The latest review per reviewer wins; dismissed ones and comments say nothing. */
 function giteaReview(reviews: unknown, requested: boolean): PullRequestFacts["review"] {
   const latest = new Map<string, { state: string; at: string }>();
   for (const entry of Array.isArray(reviews) ? reviews : []) {

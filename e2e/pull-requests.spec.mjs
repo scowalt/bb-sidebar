@@ -5,10 +5,6 @@ test.beforeEach(async ({ request }) => {
   await reset(request);
 });
 
-// The rail's data arrives through `bb.rpc.experimental_whileWatched`: a row on
-// screen watches its thread's `getPullRequests` key, and the server scans the
-// thread only then. The scratch bb has no `tea`, so the rows show no PRs; the
-// scan itself is what this checks, through the read's `scanned` flag.
 test("rows on screen get their threads scanned for pull requests", async ({ page, request }) => {
   test.setTimeout(60_000);
   const keys = fixture.threads.map(({ id }) => id);

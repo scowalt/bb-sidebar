@@ -43,9 +43,6 @@ const portSnapshotSchema = z.object({
 
 export type PortSnapshot = z.infer<typeof portSnapshotSchema>;
 
-// The wire shapes of `src/pull-request-status.ts`. Facts are all required: a
-// PR is fully described or reported as failed. Fields added later must be
-// `.optional()`, since host and server versions can differ.
 export const pullRequestFactsSchema = z.object({
   title: z.string(),
   state: z.enum(["open", "merged", "closed"]),
@@ -277,8 +274,6 @@ export const bbSidebarRpcContract = defineRpcContract({
     input: z.object({ environmentIds: z.array(z.string().trim().min(1).max(255)).min(1).max(500) }).strict(),
     output: portSnapshotSchema,
   },
-  // Keyed by thread id. A row watches its key while on screen; the server
-  // keeps watched threads' PRs fresh and invalidates `pullRequestsTag(id)`.
   getPullRequests: {
     input: z.object({ keys: z.array(z.string().trim().min(1).max(255)).min(1).max(200) }).strict(),
     output: z.record(z.string(), threadPullRequestsSchema),

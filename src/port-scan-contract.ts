@@ -8,12 +8,6 @@ import {
   pullRequestFactsSchema,
 } from "./contract";
 
-/**
- * One answer per URL. A found PR is fully described; a failed one names why,
- * so the server keeps its last facts and backs off. A merged or closed PR
- * costs one forge call; an open one three, and any of them failing fails the
- * whole PR rather than deriving a status from half the facts.
- */
 export const pullRequestLookupResultSchema = z.discriminatedUnion("outcome", [
   z.object({ url: z.string(), outcome: z.literal("found"), facts: pullRequestFactsSchema }),
   z.object({
@@ -46,11 +40,6 @@ export const portScanContract = defineRpcContract({
     }),
     output: closePortsResultSchema,
   },
-  // The plugin's only host entry, so it also runs `gh` and `tea` where the
-  // thread's workspace, and so its sign-in, lives. A new name rather than a
-  // wider `pullRequests` (the method before 0.4): an older host answering the
-  // old shape would otherwise derive to a false "ready"; a host without the
-  // method fails the call, and the server backs off as for any failure.
   lookUpPullRequests: {
     input: z.object({ urls: z.array(z.string().url()).min(1).max(20) }),
     output: z.object({ pullRequests: z.array(pullRequestLookupResultSchema) }),

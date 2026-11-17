@@ -96,11 +96,6 @@ const isKeysInput = (value: unknown): value is { keys: string[] } =>
   Array.isArray((value as { keys?: unknown }).keys) &&
   (value as { keys: unknown[] }).keys.every((key) => typeof key === "string");
 
-/**
- * The sidebar's own keyed reads. bb caches each key on its own, batches the
- * keys of every hook in a render into one call, and tells the server which
- * keys are watched (`bb.rpc.experimental_whileWatched`).
- */
 const sidebarKeyedReads = {
   getPullRequests: {
     input: schema(isKeysInput),
@@ -109,12 +104,6 @@ const sidebarKeyedReads = {
   },
 } satisfies PluginRpcContract;
 
-/**
- * A thread's pull requests, read and watched while `enabled`. While a row
- * holds the read, the server scans the thread's log and keeps its open PRs
- * fresh; releasing it (unmount, or `enabled` false) stops that work. Never
- * enable it for a Settled row. Undefined until the first answer lands.
- */
 export function useThreadPullRequests(threadId: string, enabled: boolean): ThreadPullRequests | undefined {
   const { data } = experimental_useRpcKeyedQuery({
     contract: sidebarKeyedReads,

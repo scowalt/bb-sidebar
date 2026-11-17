@@ -20,12 +20,6 @@ const STATUS_ICON: Record<PullRequestStatus, IconName> = {
   closed: "CircleX",
 };
 
-/**
- * Every PR the thread opened, for the hover card: the bar, the rollup in
- * words, then open work first as stack trees, finished PRs after. Mounted
- * only while the card is open, which is what makes a settled thread's
- * lookup on demand.
- */
 export function ThreadPullRequestDetails({ thread }: { thread: PluginSidebarThread }) {
   const pullRequests = useThreadPullRequests(thread.id, true);
   const [unfolded, setUnfolded] = useState(false);

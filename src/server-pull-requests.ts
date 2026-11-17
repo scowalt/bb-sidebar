@@ -1,8 +1,3 @@
-// The only writer of pull request data. It scans watched threads' event logs
-// for the PRs they opened, asks each thread's host for their facts, keeps
-// both in SQLite, and invalidates `pullRequestsTag(threadId)` when a thread's
-// list changes. "Watched" is bb's word: some client has the thread's
-// `getPullRequests` key on screen (`bb.rpc.experimental_whileWatched`).
 import { z } from "zod";
 import type { ServerContext } from "./server-context";
 import { pullRequestFactsSchema } from "./contract";
@@ -30,34 +25,26 @@ export const PULL_REQUESTS_MIGRATIONS = [
      checked_at  INTEGER NOT NULL,
      failures    INTEGER NOT NULL DEFAULT 0
    )`,
-  // The last lookup was Gitea's first `mergeable: false` in a row, withheld
-  // until a second one confirms it (`confirmGiteaConflict`).
   `ALTER TABLE pull_requests ADD COLUMN unconfirmed_conflict INTEGER NOT NULL DEFAULT 0`,
 ];
 
 // bb rejects event pages larger than 100.
 const EVENT_PAGE_SIZE = 100;
-/** A scan run reads at most this many pages; the rest waits for the next tick. */
 const MAX_PAGES_PER_RUN = 20;
-/** Never-scanned threads that may start per tick, so a cold start stays bounded. */
 const COLD_SCANS_PER_TICK = 5;
 const SCAN_CONCURRENCY = 3;
 const TICK_MS = 20_000;
-/** A whole sidebar mounting at once lands in one tick. */
 const DEBOUNCE_MS = 250;
 const OPEN_RECHECK_MS = 2 * 60_000;
-/** Below the tick, so running checks and Gitea's `mergeable: false` are asked about on every tick. */
 const PENDING_RECHECK_MS = 15_000;
 const FAILURE_BACKOFF_MS = [60_000, 5 * 60_000, 10 * 60_000, 30 * 60_000] as const;
 const THREAD_FACTS_TTL_MS = 60_000;
 const LOOKUP_CHUNK = 20;
-/** Per host per tick, so a cold start or a long backlog never holds one tick for minutes. */
 const LOOKUPS_PER_HOST_PER_TICK = 40;
 const HOST_CALL_TIMEOUT_MS = 30_000;
 const BRANCH_LOOKUP_TIMEOUT_MS = 60_000;
 
 interface PullRequestThreadFacts {
-  /** Its sidebar row is Settled (a child follows its tree's top row). */
   settled: boolean;
   environmentId: string | null;
   hostId: string | null;
@@ -79,7 +66,6 @@ const errorMessage = (error: unknown) => (error instanceof Error ? error.message
 export function createServerPullRequests(
   ctx: ServerContext,
   deps: {
-    /** Where these threads sit and run. Ids bb no longer lists are left out. */
     describeThreads(threadIds: readonly string[]): Promise<ReadonlyMap<string, PullRequestThreadFacts>>;
   },
 ) {
@@ -102,8 +88,6 @@ export function createServerPullRequests(
       ORDER BY t.found_seq, t.rowid`,
   );
   const selectUrl = db.prepare(`SELECT facts_json, unconfirmed_conflict FROM pull_requests WHERE url = ?`);
-  // Writes land only for URLs some thread still lists, so a thread deleted
-  // mid-lookup leaves nothing behind.
   const writeFacts = db.prepare(
     `INSERT INTO pull_requests (url, facts_json, checked_at, failures, unconfirmed_conflict)
      SELECT ?, ?, ?, 0, ? WHERE EXISTS (SELECT 1 FROM thread_pull_requests WHERE url = ?)
@@ -131,7 +115,6 @@ export function createServerPullRequests(
     }
   };
 
-  /** What a found answer stores: Gitea's first `mergeable: false` in a row is withheld. */
   const settleFacts = (url: string, next: PullRequestFacts) => {
     if (parsePullRequestUrl(url)?.forge !== "gitea") return { facts: next, unconfirmed: false };
     const previous = selectUrl.get(url) as Pick<StoredUrlRow, "facts_json" | "unconfirmed_conflict"> | undefined;
@@ -152,17 +135,12 @@ export function createServerPullRequests(
     scanFailed: scanFailures.has(threadId),
   });
 
-  // How many producers hold each thread; a thread is watched while above zero.
   const watchers = new Map<string, number>();
-  // Watched since the last tick, or just finished a turn: scan now and look
-  // up even if Settled.
   const kicked = new Set<string>();
-  // Threads whose latest scan threw: shown on the read, retried with backoff while watched.
   const scanFailures = new Map<string, { count: number; at: number }>();
   const working = new Set<string>();
   const inFlight = new Set<string>();
   const hostFailureLogged = new Set<string>();
-  // Per thread, for a minute; null when bb no longer lists it.
   const threadFactsCache = new Map<string, { at: number; facts: PullRequestThreadFacts | null }>();
 
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -202,7 +180,6 @@ export function createServerPullRequests(
     timer = null;
   });
 
-  /** Only threads whose entry is missing or a minute old are asked about. */
   const threadFacts = async (ids: readonly string[]) => {
     const now = Date.now();
     const stale = ids.filter((id) => now - (threadFactsCache.get(id)?.at ?? 0) >= THREAD_FACTS_TTL_MS);
@@ -239,13 +216,9 @@ export function createServerPullRequests(
       afterSeq = lastSeq;
       if (events.length < EVENT_PAGE_SIZE) return;
     }
-    // More pages remain: pick the scan up again next tick.
     kicked.add(threadId);
   };
 
-  // The PR on a worktree's checked-out branch, from GitHub PR Status, joins
-  // the list like a scanned one: a PR opened outside `gh pr create`. Only
-  // its URL is used; its facts come from `gh` like every other PR's.
   const discoverBranchPullRequests = async (
     threadIds: readonly string[],
     facts: ReadonlyMap<string, PullRequestThreadFacts>,
@@ -270,7 +243,6 @@ export function createServerPullRequests(
           }),
         );
       } catch (error) {
-        // GitHub PR Status disabled or failing: the scanned list still shows.
         if (controller.signal.aborted) throw error;
         bb.log.debug(`Branch pull request discovery failed: ${errorMessage(error)}`);
         return;
@@ -285,12 +257,6 @@ export function createServerPullRequests(
     })();
   };
 
-  /**
-   * Whether a PR is due for a lookup: "soon" for one never read, with running
-   * checks, or with Gitea's `mergeable: false` (which also means "still
-   * checking"); "later" for the routine refresh of open PRs and failure
-   * retries; null when it can wait or is finished.
-   */
   const lookupDue = (row: StoredUrlRow, now: number): "soon" | "later" | null => {
     if (row.checked_at === null) return "soon";
     const failures = row.failures ?? 0;
@@ -312,7 +278,6 @@ export function createServerPullRequests(
 
   const lookUpOnHost = async (hostId: string, urls: readonly string[], stillWanted: (url: string) => boolean) => {
     for (let start = 0; start < urls.length; start += LOOKUP_CHUNK) {
-      // A watcher may have left during the previous chunk.
       const chunk = urls.slice(start, start + LOOKUP_CHUNK).filter(stillWanted);
       if (!chunk.length) continue;
       for (const url of chunk) inFlight.add(url);
@@ -352,8 +317,6 @@ export function createServerPullRequests(
   };
 
   const tick = async () => {
-    // Only threads someone still watches get work; a kick from a client that
-    // already left (a card opened and closed) is dropped with it.
     const ids = [...watchers.keys()];
     const kickedNow = new Set(ids.filter((id) => kicked.has(id)));
     kicked.clear();
@@ -388,9 +351,6 @@ export function createServerPullRequests(
     }
     await discoverBranchPullRequests(scanIds, facts);
 
-    // Due URLs by host, ranked: just-watched threads first (their rows are
-    // waiting), then rechecks, then routine refreshes. Each host gets at most
-    // LOOKUPS_PER_HOST_PER_TICK; the rest are due again next tick.
     const now = Date.now();
     const dueByHost = new Map<string, Map<string, number>>();
     const threadsOf = new Map<string, Set<string>>();
@@ -425,11 +385,9 @@ export function createServerPullRequests(
   };
 
   return {
-    /** The keyed read: SQLite and memory only, never waits on a scan or a host. */
     read(threadIds: readonly string[]): Record<string, ThreadPullRequests> {
       return Object.fromEntries(threadIds.map((threadId) => [threadId, readOne(threadId)]));
     },
-    /** The `whileWatched` producer: the thread is watched until `signal` aborts. */
     watch(threadId: string, signal: AbortSignal) {
       if (signal.aborted) return;
       watchers.set(threadId, (watchers.get(threadId) ?? 0) + 1);
@@ -445,18 +403,15 @@ export function createServerPullRequests(
       );
       schedule(DEBOUNCE_MS);
     },
-    /** `thread.active`: the log is growing; rescan on every tick while watched. */
     turnStarted(threadId: string) {
       working.add(threadId);
     },
-    /** `thread.idle` or `thread.failed`: one last scan catches a create in the final command. */
     turnEnded(threadId: string) {
       working.delete(threadId);
       if (!watchers.has(threadId)) return;
       kicked.add(threadId);
       schedule(DEBOUNCE_MS);
     },
-    /** `thread.deleted`: its rows, and any PR no other thread lists. */
     forget(threadId: string) {
       working.delete(threadId);
       kicked.delete(threadId);

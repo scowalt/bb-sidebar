@@ -1,6 +1,3 @@
-// Runs `gh` and `tea` where the thread's workspace, and so its sign-in,
-// lives. Every URL gets an answer: found with every fact, or failed with a
-// reason, never a PR described by half its facts.
 import { execFile } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -12,11 +9,9 @@ import type { PullRequestFacts } from "./pull-request-status";
 const exec = promisify(execFile);
 
 const COMMAND_TIMEOUT_MS = 8_000;
-/** The server's call allows 30 s; answer before it gives up on the whole batch. */
 const OVERALL_DEADLINE_MS = 25_000;
 const WORKERS = 6;
 const LOGINS_TTL_MS = 5 * 60_000;
-/** Gitea lists 30 per page by default; statuses and reviews are read in full, up to the cap. */
 const PAGE_SIZE = 50;
 const MAX_PAGES = 10;
 // GUI-launched daemons often miss the shell PATH where Homebrew installs gh and tea.
@@ -87,7 +82,6 @@ interface TeaLogin {
 
 let logins: { at: number; promise: Promise<TeaLogin[]> } | null = null;
 
-/** `tea logins list --output json`, cached a few minutes per process. */
 function teaLogins(signal: AbortSignal): Promise<TeaLogin[]> {
   const now = Date.now();
   if (logins && now - logins.at < LOGINS_TTL_MS) return logins.promise;
@@ -103,7 +97,6 @@ function teaLogins(signal: AbortSignal): Promise<TeaLogin[]> {
     });
   });
   logins = { at: now, promise };
-  // A failed listing is asked again next time rather than cached.
   promise.catch(() => {
     if (logins?.promise === promise) logins = null;
   });
@@ -137,11 +130,6 @@ async function teaJson(login: string, path: string, signal: AbortSignal): Promis
   return value;
 }
 
-/**
- * Every item of a paginated `tea api` list: pages until one comes back short
- * or the reported total is reached. Past MAX_PAGES the PR fails rather than
- * being read in part.
- */
 async function teaList(
   login: string,
   path: string,
@@ -166,15 +154,12 @@ const reviewPage = (value: unknown) => (Array.isArray(value) ? { items: value, t
 
 async function lookUpGitea(identity: PullRequestIdentity, signal: AbortSignal): Promise<PullRequestFacts> {
   const login = (await teaLogins(signal)).find((candidate) => candidate.origin === identity.origin);
-  // Never ask the default login about a host it was not made for.
   if (!login) throw new LookupFailure("unauthorized", `no tea login for ${identity.origin}`);
   const base = `repos/${identity.repo}`;
   const pull = await teaJson(login.name, `${base}/pulls/${identity.number}`, signal);
   const detail = isRecord(pull) ? pull : {};
   const terminal = detail.merged === true || detail.state === "closed";
   const sha = isRecord(detail.head) && typeof detail.head.sha === "string" ? detail.head.sha : null;
-  // A merged or closed PR needs neither checks nor reviews. An open one needs
-  // both, and either failing fails the PR.
   if (!terminal && !sha) throw new LookupFailure("error", "Gitea named no head commit for an open pull request");
   // The combined state is derived from every status, not read from a page's `state`.
   const [statuses, reviews] = terminal
@@ -200,11 +185,6 @@ async function lookUpOne(url: string, signal: AbortSignal): Promise<PullRequestL
   }
 }
 
-/**
- * Facts for each URL, by this host's own deadline: six commands at a time,
- * eight seconds each, 25 seconds overall. URLs the deadline leaves unread
- * are reported as timed out; the server asks again later.
- */
 export async function lookUpPullRequests(
   urls: readonly string[],
   signal: AbortSignal,
@@ -220,7 +200,6 @@ export async function lookUpPullRequests(
       }
     }),
   );
-  // The caller's own abort means the whole answer is unwanted.
   signal.throwIfAborted();
   return urls.map((url) => results.get(url) ?? { url, outcome: "failed", reason: "timeout" });
 }

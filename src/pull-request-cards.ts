@@ -1,5 +1,3 @@
-// The hover card's "List + stacks" model: open work first as stack trees,
-// finished PRs after, folded when there is enough of both.
 import {
   isDone,
   PR_STATUS,
@@ -11,31 +9,23 @@ import {
 export interface PullRequestCardRow {
   entry: PullRequestEntry;
   status: PullRequestStatus;
-  /** 0 for a root; n under the PR whose head branch is this PR's base, in the same repo. */
   depth: number;
-  /** "#12" when every entry shares one repo, else "csm-ops#12". */
   ref: string;
-  /** The second line: a failing check's name, running or passed counts, when it merged, or "closed". */
   detail: string;
-  /** Conflicts beside a different headline status: failing checks plus conflicts, say. */
   alsoConflicts: boolean;
 }
 
 interface PullRequestCard {
   merged: number;
   total: number;
-  /** Open work as stack trees, worst root first, then the finished rows unless folded. */
   rows: readonly PullRequestCardRow[];
-  /** With open work and three or more finished PRs, the finished rows fold behind "Show 3 merged, 1 closed". */
   folded: { label: string; rows: readonly PullRequestCardRow[] } | null;
 }
 
-/** Finished PRs fold only when there are at least this many and something is still open. */
 const FOLD_AT = 3;
 
 const shortRepo = (repo: string) => (repo.split("/")[1] ?? repo).replace(/^internal-tools?-/, "");
 
-/** "#12" among one repo, "csm-ops#12" among several. */
 export function pullRequestRef(entry: PullRequestEntry, entries: readonly PullRequestEntry[]): string {
   const oneRepo = entries.every((other) => other.repo.toLowerCase() === entry.repo.toLowerCase());
   return oneRepo ? `#${entry.number}` : `${shortRepo(entry.repo)}#${entry.number}`;
@@ -100,7 +90,6 @@ export function pullRequestCard(entries: readonly PullRequestEntry[], now: numbe
           branchKey(child.repo, child.facts.base) === branchKey(parent.repo, parent.facts.head),
       )
       .sort((a, b) => a.number - b.number);
-  // Bases can loop (a release back-merge), so every walk remembers where it has been.
   const worst = (root: PullRequestEntry): number => {
     let rank = Number.POSITIVE_INFINITY;
     const visited = new Set<PullRequestEntry>();
@@ -125,7 +114,6 @@ export function pullRequestCard(entries: readonly PullRequestEntry[], now: numbe
     for (const child of children(entry)) walk(child, depth + 1);
   };
   for (const root of roots) walk(root, 0);
-  // A loop of bases with no way in has no root; list what the walk missed as roots.
   for (const entry of open) walk(entry, 0);
   const doneRows = done.map((entry) => row(entry, 0));
   const merged = done.filter((entry) => pullRequestStatus(entry) === "merged").length;

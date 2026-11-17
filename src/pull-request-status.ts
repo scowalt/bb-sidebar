@@ -1,29 +1,16 @@
-// A thread's pull requests as the server stores them, the wire carries them,
-// and the app draws them. The wire carries facts, never a status: this module
-// holds the one derivation and the one table every surface reads.
-
 export interface PullRequestChecks {
   total: number;
   passed: number;
   pending: number;
-  /** Names of the checks that failed or errored, in the forge's order. */
   failing: string[];
 }
 
-/**
- * What a forge says about one PR, in forge-neutral terms. Never partial: a
- * host that cannot fill every field reports the PR as failed, and its entry
- * keeps the facts it had.
- */
 export interface PullRequestFacts {
   title: string;
   state: "open" | "merged" | "closed";
   draft: boolean;
-  /** null: the forge has not computed it yet. Meaningless once merged. */
   mergeable: boolean | null;
-  /** null: no CI reported on the head commit. */
   checks: PullRequestChecks | null;
-  /** The latest review per reviewer, reduced, plus pending requests. */
   review: "changes_requested" | "review_requested" | "approved" | null;
   head: string | null;
   base: string | null;
@@ -32,24 +19,17 @@ export interface PullRequestFacts {
   deletions: number | null;
 }
 
-/** One PR of a thread. Identity is the URL. */
 export interface PullRequestEntry {
-  /** Canonical: https://host/owner/repo/pulls/N or …/pull/N. */
   url: string;
-  /** "owner/repo" */
   repo: string;
   number: number;
-  /** null until the first successful lookup, or forever if no host can read it. */
   facts: PullRequestFacts | null;
 }
 
 // Wire shapes stay mutable arrays: zod's input type is what the handler returns.
 export interface ThreadPullRequests {
-  /** In discovery order: the order the thread opened them. */
   entries: PullRequestEntry[];
-  /** False until the thread's log has been scanned once. */
   scanned: boolean;
-  /** The latest scan attempt failed; the server tries again while the thread is watched. */
   scanFailed: boolean;
 }
 
@@ -68,13 +48,10 @@ export type PullRequestStatus =
 export type PullRequestTone = "alert" | "pending" | "review" | "ready" | "draft" | "unknown" | "merged" | "closed";
 
 interface StatusRow {
-  /** Worst first. */
   rank: number;
   tone: PullRequestTone;
   label: string;
-  /** The rollup's noun phrase: "2 failing". */
   word: string;
-  /** Merged and closed: never looked up again, never "open work". */
   done: boolean;
 }
 
@@ -91,7 +68,6 @@ export const PR_STATUS = {
   closed: { rank: 9, tone: "closed", label: "Closed", word: "closed", done: true },
 } as const satisfies Record<PullRequestStatus, StatusRow>;
 
-/** Every status, worst first. */
 export const PR_STATUSES = (Object.keys(PR_STATUS) as PullRequestStatus[]).sort(
   (a, b) => PR_STATUS[a].rank - PR_STATUS[b].rank,
 );
@@ -114,32 +90,24 @@ export function isDone(status: PullRequestStatus): boolean {
   return PR_STATUS[status].done;
 }
 
-/** One drawn segment of the rail. Past MAX_RAIL_SEGMENTS, a run of one tone draws as one segment. */
 export interface RailSegment {
-  /** The first PR's URL in the run. */
   key: string;
   status: PullRequestStatus;
-  /** How many PRs the segment stands for; its share of the rail's width. */
   span: number;
 }
 
 interface PullRequestSummary {
   total: number;
   merged: number;
-  /** Rail order: merged by merge time, then open work by repo and number, then closed by number. */
   segments: readonly RailSegment[];
-  /** The worst status among PRs that are not done; null when everything is done. */
   worst: PullRequestStatus | null;
-  /** Open statuses in rank order, then merged, then closed: "2 failing · 1 running · 3 merged". */
   rollup: readonly { status: PullRequestStatus; count: number }[];
 }
 
-/** Beyond this many PRs the rail would draw sub-pixel slivers. */
 export const MAX_RAIL_SEGMENTS = 16;
 
 const byNumber = (a: PullRequestEntry, b: PullRequestEntry) => a.number - b.number;
 
-/** Rail order, each entry with its status. */
 export function orderPullRequests(
   entries: readonly PullRequestEntry[],
 ): { entry: PullRequestEntry; status: PullRequestStatus }[] {
@@ -171,12 +139,10 @@ export function summarizePullRequests(entries: readonly PullRequestEntry[]): Pul
   return { total: ordered.length, merged: counts.get("merged") ?? 0, segments, worst, rollup };
 }
 
-/** The rollup in words: "2 failing · 1 running · 3 merged". */
 export function rollupWords(summary: PullRequestSummary): string[] {
   return summary.rollup.map(({ status, count }) => `${count} ${PR_STATUS[status].word}`);
 }
 
-/** The rail's accessible name: "Pull requests: 2 of 4 merged, 1 failing, 1 running". */
 export function describePullRequests(summary: PullRequestSummary): string {
   const open = summary.rollup.filter(({ status }) => !isDone(status));
   const parts = [`${summary.merged} of ${summary.total} merged`, ...rollupWords({ ...summary, rollup: open })];

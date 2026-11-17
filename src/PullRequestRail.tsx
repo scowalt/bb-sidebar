@@ -16,7 +16,6 @@ import {
   type RailSegment,
 } from "./pull-request-status";
 
-/** A segment's fill, by tone. Exhaustive, so a new tone cannot go undrawn. */
 const PR_TONE_BG: Record<PullRequestTone, string> = {
   alert: "bg-[color:var(--bb-sidebar-pr-alert)]",
   pending: "bg-[color:var(--bb-sidebar-pr-pending)]",
@@ -39,8 +38,6 @@ export const PR_TONE_TEXT: Record<PullRequestTone, string> = {
   closed: "text-[color:var(--bb-sidebar-pr-closed)]",
 };
 
-// Inside the row's bottom padding, so no row changes height. The card's
-// metadata line ends 8 px up; the grid layout and one-line rows have less.
 const RAIL_POSITION = {
   card: "inset-x-2.5 bottom-1 h-[3px]",
   grid: "inset-x-2.5 bottom-0.5 h-[3px]",
@@ -64,7 +61,6 @@ function Segment({ segment }: { segment: RailSegment }) {
   );
 }
 
-/** The segments in flow. The rail positions it; the hover card shows it as is. */
 export function PullRequestBar({
   segments,
   className,
@@ -79,21 +75,11 @@ export function PullRequestBar({
   );
 }
 
-/**
- * A row's read, held while the row is on screen. Until lifecycle rows load a
- * thread may still turn out Settled, so nothing is asked before then: the
- * server would scan and poll a done thread for the moment it took to move.
- */
 function useRowPullRequests(threadId: string, visible: boolean) {
   const { lifecycleLoaded } = useInboxEnvironment();
   return useThreadPullRequests(threadId, visible && lifecycleLoaded);
 }
 
-/**
- * One segment per PR under the row, in progress order. Mounting it with
- * `visible` watches the thread, so the server keeps its PRs fresh; never
- * mount it for a Settled row.
- */
 export function PullRequestRail({
   threadId,
   visible,
@@ -117,10 +103,6 @@ export function PullRequestRail({
   );
 }
 
-/**
- * The count sits over the row's full-bleed link; a click on it still opens
- * the thread, with its modifiers, so Cmd/Ctrl-click opens a split as on the row.
- */
 function openRow(event: MouseEvent<HTMLElement>) {
   const link = event.currentTarget
     .closest("[data-parent-card]")
@@ -161,7 +143,6 @@ function SinglePullRequest({ entry }: { entry: PullRequestEntry }) {
   );
 }
 
-/** `#N` for one PR, `merged/total` for several, at the end of the metadata line. */
 export function PullRequestCount({ threadId, visible }: { threadId: string; visible: boolean }) {
   const pullRequests = useRowPullRequests(threadId, visible);
   const entries = pullRequests?.entries ?? [];

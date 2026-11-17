@@ -113,7 +113,6 @@
   --bb-sidebar-settle-spark: var(--bb-sidebar-emerald-500);
   --bb-sidebar-settle-glint: color-mix(in oklab, white 35%, transparent);
 
-  /* Pull request tones: merged, needs you, checks running, awaiting review, ready, closed. */
   --bb-sidebar-pr-merged: var(--bb-sidebar-violet-600);
   --bb-sidebar-pr-alert: var(--bb-sidebar-red-600);
   --bb-sidebar-pr-pending: var(--bb-sidebar-amber-700);
