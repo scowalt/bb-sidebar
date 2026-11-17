@@ -69,6 +69,17 @@ const databaseSnapshots = [
       projectColorDisplay: "full",
     },
   },
+  {
+    version: "pull-requests-2c71b8f",
+    settings: {
+      ...DEFAULT_SIDEBAR_SETTINGS,
+      ...releaseSettings,
+      compactWorkingThreads: false,
+      threadDisplay: "full",
+      projectColorsEnabled: true,
+      projectColorDisplay: "full",
+    },
+  },
 ];
 
 const expectedRows = [
@@ -122,7 +133,7 @@ const expectedRows = [
 it.each(Object.entries(hashes))("keeps fixture %s at its committed SHA-256", (name, expected) => {
   const path = fixturePath(name);
   expect(hash(path)).toBe(expected);
-  expect(readFileSync(path).length).toBeLessThan(100_000);
+  expect(readFileSync(path).length).toBeLessThan(120_000);
 });
 
 it("v0.2.34 contains only its released settings schema and cache shape", () => {

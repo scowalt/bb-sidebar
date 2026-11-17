@@ -10,6 +10,7 @@ import { threadDisplayTitle } from "./inbox";
 import { snoozeWakeLabel } from "./lifecycle";
 import { useProjectColor } from "./ProjectColors";
 import { OpenPortsIndicator } from "./OpenPorts";
+import { PullRequestRail } from "./PullRequestRail";
 import { ShortcutHint } from "./bb-sdk";
 import { rowKeyshortcuts } from "./lib/keyshortcuts";
 import { useInboxActivity, useInboxEnvironment, useInboxActions } from "./InboxContext";
@@ -102,6 +103,7 @@ export const SlimRow = memo(function SlimRow({
           onRenamingChange={setIsRenaming}
           linkProps={{ "aria-keyshortcuts": rowKeyshortcuts(shortcut?.ariaKeyshortcuts, false) }}
           onOpen={onNavigate}
+          rail={shelf === "settled" ? null : <PullRequestRail threadId={thread.id} visible layout="slim" />}
           trailing={
             <>
               <OpenPortsIndicator thread={thread} />
