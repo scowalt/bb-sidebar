@@ -27,7 +27,8 @@ function fakeGitHub({ live, responses = {}, realGit = false }) {
     calls.push([command, ...args]);
     if (realGit && command === "git") return run(command, args, options);
     const key = `${command} ${args.slice(0, 2).join(" ")}`;
-    return { code: 0, stdout: responses[key] ?? "", stderr: "" };
+    const stdout = { "gh api repos/{owner}/{repo}": "true\n", ...responses }[key] ?? "";
+    return { code: 0, stdout, stderr: "" };
   };
   const github = createGitHub({ live, runner, log: (line) => logs.push(line), env: {} });
   return { github, calls, logs };
@@ -47,13 +48,13 @@ const result = (channel, ok) => ({
   ok,
 });
 const writes = (calls) =>
-  calls.filter((call) => !(call[1] === "issue" && call[2] === "list") && !(call[1] === "pr" && call[2] === "list"));
+  calls.filter((call) => !["issue list", "pr list", "api repos/{owner}/{repo}"].includes(`${call[1]} ${call[2]}`));
 
 test("a dry run reads but writes nothing, and prints what it would do", async () => {
   const { github, calls, logs } = fakeGitHub({ live: false, responses: { "gh issue list": "[]" } });
   await publishIssues(github, [result("floor", false), result("stable", true), result("nightly", false)], { runUrl });
   assert.deepEqual(writes(calls), []);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
   assert.ok(logs.some((line) => line.startsWith("[dry run] would open an issue: gh issue create --title")));
   assert.ok(logs.some((line) => line.includes("--label bb-compat-nightly")));
 });
@@ -94,6 +95,12 @@ test("a new failure creates the label and one issue; passing with nothing open d
   const create = writes(calls)[1];
   assert.equal(create[create.indexOf("--label") + 1], "bb-compat-nightly");
   assert.match(create[create.indexOf("--title") + 1], /^Warning: unreleased bb nightly/);
+});
+
+test("a repository with issues turned off reads nothing more and writes nothing", async () => {
+  const { github, calls } = fakeGitHub({ live: true, responses: { "gh api repos/{owner}/{repo}": "false\n" } });
+  await publishIssues(github, [result("floor", false), result("stable", false), result("nightly", false)], { runUrl });
+  assert.deepEqual(calls, [["gh", "api", "repos/{owner}/{repo}", "--jq", ".has_issues"]]);
 });
 
 test("missing or invalid channel results count as failures", () => {
