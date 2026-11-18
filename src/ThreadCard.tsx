@@ -34,6 +34,7 @@ import { OpenPortsIndicator } from "./OpenPorts";
 import { useInboxEnvironment, useInboxActions, useInboxActivity } from "./InboxContext";
 import { DEFAULT_SIDEBAR_SETTINGS } from "./sidebar-settings";
 import { useCardShelving } from "./useLifecycle";
+import { useOnScreen } from "./useOnScreen";
 import { projectIconUrl as iconUrl } from "./project-icons";
 import "./settle-button.css";
 
@@ -116,20 +117,7 @@ export function ThreadCard({
   const shortcut = useSidebarThreadShortcut(thread.id);
   const { splitProps, layout } = useSidebarThreadSplit(thread.id);
   const rowRef = useRef<HTMLLIElement>(null);
-  const [isVisible, setIsVisible] = useState(false);
-  useEffect(() => {
-    const row = rowRef.current;
-    if (!row) return;
-    if (typeof IntersectionObserver === "undefined") {
-      setIsVisible(true);
-      return;
-    }
-    const observer = new IntersectionObserver(([entry]) => {
-      setIsVisible(entry?.isIntersecting ?? false);
-    });
-    observer.observe(row);
-    return () => observer.disconnect();
-  }, []);
+  const isVisible = useOnScreen(rowRef);
   const [isRenaming, setIsRenaming] = useState(false);
   useLayoutEffect(() => {
     return () => {

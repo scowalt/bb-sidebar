@@ -94,7 +94,8 @@ describe("pull request rail", () => {
     const bar = await rail("Pull requests: 1 of 4 merged, 1 failing, 1 running");
     expect(segments(bar)).toEqual(["merged", "checks_pending", "checks_failed", "closed"]);
     const pending = bar.querySelector('[data-status="checks_pending"]')!;
-    expect(pending.className).toContain("bb-sidebar-working-pulse");
+    expect(pending.className).toContain("bb-sidebar-pr-pending");
+    expect(pending.className).not.toContain("bb-sidebar-working-pulse");
     expect(bar.querySelector('[data-status="checks_failed"]')!.className).toContain("bb-sidebar-pr-alert");
     expect(bar.className).toContain("pointer-events-none");
     expect(bar.className).toContain("absolute");
@@ -237,6 +238,43 @@ describe("pull request rail", () => {
   });
 });
 
+describe("pull request rails on subthread rows", () => {
+  const tree = (parent: Partial<PluginSidebarThread> = {}) => [
+    thread({ id: "thr_parent", title: "Parent work", ...parent }),
+    thread({ id: "thr_child", title: "Child work", parentThreadId: "thr_parent" }),
+  ];
+  const childRows = { thr_child: { scanned: true, scanFailed: false, entries: [entry(5, failing), entry(6)] } };
+
+  it("draws a rail under each subthread of an expanded live parent, without a count", async () => {
+    const { requested } = mount({ threads: tree(), rows: childRows });
+    fireEvent.click(await screen.findByRole("button", { name: "1 child thread" }));
+    const row = (await screen.findByRole("link", { name: /^Open child thread: Child work/ })).closest<HTMLElement>(
+      "[data-child-thread-row]",
+    )!;
+    const bar = await within(row).findByRole("img", { name: "Pull requests: 0 of 2 merged, 1 failing, 1 ready" });
+    expect(segments(bar)).toEqual(["checks_failed", "ready"]);
+    expect(bar.className).toContain("pointer-events-none");
+    expect(row.className).toContain("relative");
+    expect(within(row).queryByText("0/2")).toBeNull();
+    expect(requested.flat()).toContain("thr_child");
+  });
+
+  it("asks nothing about a subthread of a settled parent, though its row is open", async () => {
+    const { requested } = mount({
+      threads: tree(),
+      lifecycle: [{ threadId: "thr_parent", settledAt: 200, snoozedUntil: null, snoozedAt: null }],
+      rows: childRows,
+    });
+    const settled = await screen.findByRole("region", { name: "Settled" });
+    fireEvent.click(within(settled).getByRole("button", { name: /^Settled/ }));
+    fireEvent.click(await within(settled).findByRole("button", { name: "1 child thread" }));
+    await within(settled).findByRole("link", { name: /^Open child thread: Child work/ });
+    await act(async () => {});
+    expect(requested).toEqual([]);
+    expect(within(settled).queryByRole("img", { name: /^Pull requests/ })).toBeNull();
+  });
+});
+
 describe("pull requests in the hover card", () => {
   async function openCard(rows: ThreadPullRequests) {
     const result = mount({ rows: { thr_pr: rows } });
@@ -274,20 +312,51 @@ describe("pull requests in the hover card", () => {
       "0",
     ]);
     const lineOf = (text: string) => within(list).getByText(text).parentElement?.textContent;
+    const linesOf = (ref: string) =>
+      [
+        ...within(list).getByRole("link", { name: `Open pull request ${ref}` }).parentElement!.parentElement!.children,
+      ].map((line) => line.textContent);
     expect(within(list).getByText("PR Format / format failed").className).toContain("bb-sidebar-pr-alert");
-    expect(lineOf("PR Format / format failed")).toBe("PR Format / format failedconflicts");
-    expect(lineOf("3 of 19 checks running")).toBe("3 of 19 checks running");
-    expect(lineOf("Checks failed")).toBe("#11·Checks failed+10 −2");
-    expect(lineOf("Checks running")).toBe("#10·Checks running+10 −2");
-    expect(lineOf("Awaiting review")).toBe("#12·Awaiting review+10 −2");
-    expect(within(list).getByText("Child").parentElement?.parentElement?.children).toHaveLength(3);
+    expect(within(list).getByText("conflicts").className).toContain("bb-sidebar-pr-alert");
+    expect(within(list).getByText("3 of 19 checks running").className).toContain("bb-sidebar-pr-pending");
+    expect(linesOf("#11")).toEqual(["#11+10 −2", "Child", "PR Format / format failed·conflicts"]);
+    expect(linesOf("#10")).toEqual(["#10+10 −2", "Root", "3 of 19 checks running"]);
+    expect(linesOf("#12")).toEqual(["#12+10 −2", "Other root", "Awaiting review·3 checks passed"]);
+    expect(within(list).getByText("Awaiting review").className).toContain("shrink-0");
+    expect(within(list).getByText("3 checks passed").className).toContain("truncate");
+    expect(within(list).queryByText("Checks failed")).toBeNull();
+    expect(within(list).queryByText("Checks running")).toBeNull();
     expect(within(list).getAllByText("+10")).toHaveLength(3);
     fireEvent.click(within(card).getByRole("button", { name: "Show 2 merged, 1 closed" }));
     expect(refs()).toEqual(["#10", "#11", "#12", "#2", "#1", "#3"]);
-    expect(lineOf("Closed")).toBe("#3·Closed+10 −2");
-    expect(within(list).getByText("Closed").parentElement?.parentElement?.children).toHaveLength(2);
+    expect(linesOf("#3")).toEqual(["#3+10 −2", "Fix the flake", "Closed"]);
+    expect(lineOf("Closed")).toBe("Closed");
     expect(within(list).getAllByText(/^Merged \d+d ago$/)).toHaveLength(2);
     expect(within(list).queryByText("Merged")).toBeNull();
+  });
+
+  it("gives the status line the row's full width, so a long check name and a merge age stay whole", async () => {
+    const check = "Build and publish the container image / integration (ubuntu-latest, node 22)";
+    vi.useFakeTimers({ now: Date.parse("2026-11-16T12:00:00Z"), toFake: ["Date"] });
+    try {
+      const { card } = await openCard({
+        scanned: true,
+        scanFailed: false,
+        entries: [
+          entry(1, { checks: { total: 19, passed: 18, pending: 0, failing: [`${check} (pull_request)`] } }),
+          merged(2, "2026-11-15T14:00:00Z"),
+        ],
+      });
+      const list = within(card).getByRole("list", { name: "Pull requests" });
+      const failed = within(list).getByText(`${check} failed`);
+      expect(failed.parentElement?.textContent).toBe(`${check} failed`);
+      expect(failed.getAttribute("title")).toBe(`${check} failed`);
+      const age = within(list).getByText("Merged 22h ago");
+      expect(age.parentElement?.textContent).toBe("Merged 22h ago");
+      expect(age.className).toContain("bb-sidebar-pr-merged");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("renders a long title whole, clamped to two lines, with the full title on hover", async () => {

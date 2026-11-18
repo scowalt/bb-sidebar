@@ -35,10 +35,12 @@ live again). Snoozed, Parked and Inactive-shelf threads stay live.
   `getPullRequests` keyed read for its thread (`useThreadPullRequests` in
   `src/bb-sdk.ts`, through `PullRequestRail.tsx`), and bb's
   `experimental_whileWatched` tells `server-pull-requests` which threads are
-  watched. Only those are scanned and refreshed. A Settled row mounts no
-  read; its hover card does, which is the on-demand lookup. Rows mount the
-  read only once lifecycle rows have loaded (`lifecycleLoaded` in
-  `InboxContext`), since before that a thread may still turn out Settled.
+  watched. Only those are scanned and refreshed. The rail itself refuses a
+  Settled thread, so whoever mounts it (card, slim row, subthread row)
+  needs no check: it reads `settledThreadIds` from `InboxContext` (the
+  `settled` set above, children with their row) and holds no read while it
+  is null or has the thread. A Settled thread's hover card still reads,
+  which is the on-demand lookup.
 - `getOpenPorts` takes `{ environmentIds }` (1-500, strict) and rejects `{}`;
   the app sends live workspaces and splits longer lists.
 - Server: `server-policy` passes (run by the 5-minute `auto-settle` schedule,

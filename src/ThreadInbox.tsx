@@ -28,7 +28,6 @@ import { useChildThreadDisplayValue } from "./ChildThreadDisplay";
 import { useLifecycle } from "./useLifecycle";
 import { useLifecycleRows, type LifecycleRows } from "./useLifecycleRows";
 import { useLiveThreads } from "./useLiveThreads";
-import type { PortScanScope } from "./OpenPorts";
 import type { createDragPreview } from "./drag-preview";
 import { usePinnedReorder } from "./usePinnedReorder";
 import { useCollapseChildrenOnSettle } from "./useCollapseChildrenOnSettle";
@@ -67,10 +66,10 @@ export function ThreadInbox(props: PluginThreadListProps) {
   // Read above the limit provider: it skips settled threads, and the inbox
   // below reads its limit rows to place snoozed ones.
   const lifecycleRows = useLifecycleRows();
-  const { settled, portScope } = useLiveThreads(snapshot.threads, lifecycleRows);
+  const live = useLiveThreads(snapshot.threads, lifecycleRows);
   return (
-    <RateLimitsProvider threads={snapshot.threads} settledThreadIds={settled}>
-      <ThreadInboxContent {...props} snapshot={snapshot} lifecycleRows={lifecycleRows} portScope={portScope} />
+    <RateLimitsProvider threads={snapshot.threads} settledThreadIds={live.settled}>
+      <ThreadInboxContent {...props} snapshot={snapshot} lifecycleRows={lifecycleRows} live={live} />
     </RateLimitsProvider>
   );
 }
@@ -81,11 +80,11 @@ function ThreadInboxContent({
   isCompactViewport,
   snapshot,
   lifecycleRows,
-  portScope,
+  live: { settled: settledThreadIds, portScope },
 }: PluginThreadListProps & {
   snapshot: ReturnType<typeof useSidebarThreads>;
   lifecycleRows: LifecycleRows;
-  portScope: PortScanScope;
+  live: ReturnType<typeof useLiveThreads>;
 }) {
   const { status, projects } = snapshot;
   const sidebarSettings = useSidebarSettings();
@@ -432,7 +431,7 @@ function ThreadInboxContent({
     sidebarSettings,
     snoozePresets,
     lifecycle,
-    lifecycleLoaded: lifecycleRows.loaded,
+    settledThreadIds,
     childrenByParentId,
     activeThreadId,
     now,

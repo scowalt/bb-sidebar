@@ -1,6 +1,6 @@
 import { useInboxChildList, type InboxChildListInputs } from "./InboxContext";
 import { useSidebarThreadSplit, useSidebarThreads } from "./bb-sdk";
-import { useId, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { useRealtime, type PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { Icon } from "./components/Icon";
 import { Tooltip } from "./components/Tooltip";
@@ -24,6 +24,8 @@ import { RowContextMenu } from "./RowContextMenu";
 import { InlineThreadTitle } from "./InlineThreadTitle";
 import { ThreadDetailsTooltip } from "./ThreadDetailsTooltip";
 import { OpenPortsIndicator } from "./OpenPorts";
+import { PullRequestRail } from "./PullRequestRail";
+import { useOnScreen } from "./useOnScreen";
 import {
   childStatusIndicator,
   childStatusKind,
@@ -362,14 +364,17 @@ function ChildThreadRow({
   const [isRenaming, setIsRenaming] = useState(false);
   const { splitProps } = useSidebarThreadSplit(thread.id);
   const RowAction = isRenaming ? "div" : "a";
+  const rowRef = useRef<HTMLDivElement>(null);
+  const onScreen = useOnScreen(rowRef);
 
   return (
     <RowContextMenu thread={thread} canArchive={canParkThread(thread)} onRename={() => setIsRenaming(true)}>
       <div
+        ref={rowRef}
         data-child-thread-row=""
         data-active={isActive ? "true" : undefined}
         className={cn(
-          "group/child flex w-full items-center rounded-md text-left",
+          "group/child relative flex w-full items-center rounded-md text-left",
           "h-7 hover:bg-sidebar-accent/60",
           needsYou &&
             !isActive &&
@@ -443,6 +448,7 @@ function ChildThreadRow({
           </span>
         ) : null}
         {disclosure ? <GrandchildDisclosureButton title={title} {...disclosure} /> : null}
+        <PullRequestRail threadId={thread.id} visible={onScreen} layout="child" />
       </div>
     </RowContextMenu>
   );

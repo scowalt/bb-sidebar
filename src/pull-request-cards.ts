@@ -2,17 +2,26 @@ import {
   isDone,
   PR_STATUS,
   pullRequestStatus,
+  type PullRequestChecks,
   type PullRequestEntry,
   type PullRequestStatus,
+  type PullRequestTone,
 } from "./pull-request-status";
+
+/** One phrase of a card row's status line; a null tone is the card's muted text. */
+interface StatusPhrase {
+  text: string;
+  tone: PullRequestTone | null;
+  truncates: boolean;
+}
 
 export interface PullRequestCardRow {
   entry: PullRequestEntry;
   status: PullRequestStatus;
   depth: number;
   ref: string;
-  detail: string;
-  alsoConflicts: boolean;
+  /** Phrases shown in order, joined by a muted dot. */
+  statusLine: readonly StatusPhrase[];
 }
 
 interface PullRequestCard {
@@ -39,12 +48,7 @@ function ago(iso: string, now: number): string {
   return `${Math.round(hours / 24)}d`;
 }
 
-function detailOf(entry: PullRequestEntry, status: PullRequestStatus, now: number): string {
-  const facts = entry.facts;
-  if (!facts) return "Status unavailable";
-  if (status === "merged") return facts.mergedAt ? `merged ${ago(facts.mergedAt, now)} ago` : "merged";
-  if (status === "closed") return "closed";
-  const checks = facts.checks;
+function checksPhrase(checks: PullRequestChecks | null): string {
   if (!checks || checks.total === 0) return "No checks";
   if (checks.failing.length) {
     const first = checks.failing[0]!.replace(/ \(pull_request\)$/, "");
@@ -55,6 +59,47 @@ function detailOf(entry: PullRequestEntry, status: PullRequestStatus, now: numbe
   return `${checks.total} checks passed`;
 }
 
+/**
+ * The status line under a row's title. A status that names itself (failed or
+ * running checks, merged, closed, unknown) is one phrase in its tone; any
+ * other open status leads with its label, then the checks. Conflicts beside a
+ * different status come last.
+ */
+function statusLine(entry: PullRequestEntry, status: PullRequestStatus, now: number): StatusPhrase[] {
+  const line = statusPhrases(entry, status, now);
+  const alsoConflicts = !isDone(status) && status !== "conflicts" && entry.facts?.mergeable === false;
+  return alsoConflicts ? [...line, { text: "conflicts", tone: "alert", truncates: false }] : line;
+}
+
+function statusPhrases(entry: PullRequestEntry, status: PullRequestStatus, now: number): StatusPhrase[] {
+  const tone = PR_STATUS[status].tone;
+  const facts = entry.facts;
+  const alone = (text: string): StatusPhrase[] => [{ text, tone, truncates: true }];
+  switch (status) {
+    case "unknown":
+    case "closed":
+      return alone(PR_STATUS[status].label);
+    case "merged":
+      return alone(facts?.mergedAt ? `Merged ${ago(facts.mergedAt, now)} ago` : "Merged");
+    case "checks_failed":
+    case "checks_pending":
+      return alone(checksPhrase(facts?.checks ?? null));
+    case "conflicts":
+    case "changes_requested":
+    case "review_requested":
+    case "ready":
+    case "draft":
+      return [
+        { text: PR_STATUS[status].label, tone, truncates: false },
+        { text: checksPhrase(facts?.checks ?? null), tone: null, truncates: true },
+      ];
+    default: {
+      const _exhaustive: never = status;
+      return _exhaustive;
+    }
+  }
+}
+
 export function pullRequestCard(entries: readonly PullRequestEntry[], now: number): PullRequestCard {
   const row = (entry: PullRequestEntry, depth: number): PullRequestCardRow => {
     const status = pullRequestStatus(entry);
@@ -63,8 +108,7 @@ export function pullRequestCard(entries: readonly PullRequestEntry[], now: numbe
       status,
       depth,
       ref: pullRequestRef(entry, entries),
-      detail: detailOf(entry, status, now),
-      alsoConflicts: !isDone(status) && status !== "conflicts" && entry.facts?.mergeable === false,
+      statusLine: statusLine(entry, status, now),
     };
   };
   const open = entries.filter((entry) => !isDone(pullRequestStatus(entry)));
