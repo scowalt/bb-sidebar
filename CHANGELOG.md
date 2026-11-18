@@ -2,13 +2,15 @@
 
 ## [Unreleased]
 
-### Added
-
-- **Subthreads draw their pull request rail too.** A subthread row under an expanded parent now has the same thin rail under its title, one segment per pull request the subthread opened, coloured by status as on parent rows. There is no `merged/total` count on these rows, which have no room for it; the hover card lists the pull requests. Subthreads of a settled thread show no rail and are never polled, as with any settled row.
-
 ### Changed
 
 - **New default settings.** A new install, and any install that has never saved its sidebar settings, now starts with shelves docked to the bottom, child threads listed newest first with their provider icons instead of colour circles, and project colors on with no stripes: project names are coloured and rows have no stripe. "Dock shelves to the bottom" is no longer marked experimental. "Settle quiet threads" is now off for new installs. An install that already had sidebar data keeps settling quiet threads, as with "Settle finished pull requests" when that became opt-in: the switch stays on until you turn it off, and saving any other setting keeps it on. Saved settings keep their values.
+
+## [0.3.15] - 2026-11-17
+
+### Added
+
+- **Subthreads draw their pull request rail too.** A subthread row under an expanded parent now has the same thin rail under its title, one segment per pull request the subthread opened, coloured by status as on parent rows. There is no `merged/total` count on these rows, which have no room for it; the hover card lists the pull requests. Subthreads of a settled thread show no rail and are never polled, as with any settled row.
 
 ### Fixed
 
