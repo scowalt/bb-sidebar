@@ -126,8 +126,19 @@ export function loadChannelResults(dir) {
   return CHANNELS.map((channel) => found[channel] ?? missingResult(channel));
 }
 
-/** Opens, updates or closes one issue per group, found by its label. */
+/**
+ * Opens, updates or closes one issue per group, found by its label. A repository
+ * with issues turned off, such as a fork, gets the summary and no issues.
+ */
 export async function publishIssues(github, results, { runUrl }) {
+  // `gh repo view` ignores GH_REPO and, in a fork's checkout, reports the parent.
+  const hasIssues = await github.read("gh", ["api", "repos/{owner}/{repo}", "--jq", ".has_issues"]);
+  if (hasIssues.trim() !== "true") {
+    console.log(
+      "::notice::This repository has issues turned off; not opening, updating or closing compatibility issues.",
+    );
+    return;
+  }
   for (const [group, config] of Object.entries(ISSUE_GROUPS)) {
     const listed = await github.read("gh", [
       "issue",
