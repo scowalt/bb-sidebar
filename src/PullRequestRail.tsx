@@ -1,9 +1,8 @@
 import type { HTMLAttributes, MouseEvent } from "react";
 import { useThreadPullRequests } from "./bb-sdk";
-import { useInboxEnvironment } from "./InboxContext";
+import { useInboxSettledThreadIds } from "./InboxContext";
 import { Tooltip } from "./components/Tooltip";
 import { cn } from "./lib/utils";
-import { syncWorkingPulse } from "./StatusGlyph";
 import { pullRequestRef } from "./pull-request-cards";
 import {
   describePullRequests,
@@ -42,21 +41,16 @@ const RAIL_POSITION = {
   card: "inset-x-2.5 bottom-1 h-[3px]",
   grid: "inset-x-2.5 bottom-0.5 h-[3px]",
   slim: "inset-x-2.5 bottom-0.5 h-0.5",
+  child: "bottom-0.5 left-6 right-2 h-0.5",
 } as const;
 type RailLayout = keyof typeof RAIL_POSITION;
 
 function Segment({ segment }: { segment: RailSegment }) {
-  const pulse = segment.status === "checks_pending";
   return (
     <span
       data-status={segment.status}
       style={{ flexGrow: segment.span }}
-      className={cn(
-        "min-w-0 basis-0 rounded-full",
-        PR_TONE_BG[PR_STATUS[segment.status].tone],
-        pulse && "bb-sidebar-working-pulse",
-      )}
-      onAnimationStart={pulse ? syncWorkingPulse : undefined}
+      className={cn("min-w-0 basis-0 rounded-full", PR_TONE_BG[PR_STATUS[segment.status].tone])}
     />
   );
 }
@@ -75,9 +69,10 @@ export function PullRequestBar({
   );
 }
 
+/** A row's pull requests while it is on screen and live; a Settled thread is never watched. */
 function useRowPullRequests(threadId: string, visible: boolean) {
-  const { lifecycleLoaded } = useInboxEnvironment();
-  return useThreadPullRequests(threadId, visible && lifecycleLoaded);
+  const settled = useInboxSettledThreadIds();
+  return useThreadPullRequests(threadId, visible && settled !== null && !settled.has(threadId));
 }
 
 export function PullRequestRail({
