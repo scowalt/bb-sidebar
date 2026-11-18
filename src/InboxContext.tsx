@@ -31,7 +31,8 @@ interface InboxContextInputs {
   sidebarSettings: SidebarSettingsValues | null;
   snoozePresets: readonly ConfiguredSnoozePreset[];
   lifecycle: LifecycleApi;
-  lifecycleLoaded: boolean;
+  /** Threads on the Settled shelf, children with their row; null until lifecycle rows load. */
+  settledThreadIds: ReadonlySet<string> | null;
   childrenByParentId: ReadonlyMap<string, readonly PluginSidebarThread[]>;
   activeThreadId: string | null;
   now: number;
@@ -57,7 +58,7 @@ export function useInboxContextValues({
   sidebarSettings,
   snoozePresets,
   lifecycle,
-  lifecycleLoaded,
+  settledThreadIds,
   childrenByParentId,
   activeThreadId,
   now,
@@ -82,7 +83,7 @@ export function useInboxContextValues({
       sidebarSettings,
       snoozePresets,
       lifecycle,
-      lifecycleLoaded,
+      settledThreadIds,
       childrenByParentId,
     }),
     [
@@ -93,7 +94,7 @@ export function useInboxContextValues({
       sidebarSettings,
       snoozePresets,
       lifecycle,
-      lifecycleLoaded,
+      settledThreadIds,
       childrenByParentId,
     ],
   );
@@ -192,6 +193,11 @@ export function useInboxEnvironment() {
 /** The inbox's children by parent, side chats included; null outside the inbox. */
 export function useInboxChildrenByParent() {
   return useContext(InboxEnvironmentContext)?.childrenByParentId ?? null;
+}
+
+/** Settled thread ids; null until lifecycle rows load, and outside the inbox. */
+export function useInboxSettledThreadIds() {
+  return useContext(InboxEnvironmentContext)?.settledThreadIds ?? null;
 }
 
 export function useInboxActions() {

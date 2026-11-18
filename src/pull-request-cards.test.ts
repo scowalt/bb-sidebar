@@ -94,31 +94,51 @@ describe("pullRequestCard", () => {
     expect(few.rows.map((row) => row.ref)).toEqual(["#4", "#2", "#1"]);
   });
 
-  it("words the detail line for failed, running, passed, missing, merged, closed and unknown", () => {
-    const detail = (value: Parameters<typeof entry>[1]) => pullRequestCard([entry(1, value)], NOW).rows[0]!.detail;
-    expect(detail(failing)).toBe("PR Format / format failed");
-    expect(detail({ checks: { total: 3, passed: 0, pending: 0, failing: ["a", "b", "c"] } })).toBe(
-      "a and 2 more failed",
+  it("gives a status that names itself one phrase in its tone, without repeating it", () => {
+    const line = (value: Parameters<typeof entry>[1]) => pullRequestCard([entry(1, value)], NOW).rows[0]!.statusLine;
+    const alone = (text: string, tone: string) => [{ text, tone, truncates: true }];
+    expect(line(failing)).toEqual(alone("PR Format / format failed", "alert"));
+    expect(line({ checks: { total: 3, passed: 0, pending: 0, failing: ["a", "b", "c"] } })).toEqual(
+      alone("a and 2 more failed", "alert"),
     );
-    expect(detail(running)).toBe("3 of 19 checks running");
-    expect(detail({})).toBe("3 checks passed");
-    expect(detail({ checks: null })).toBe("No checks");
-    expect(detail({ state: "merged", mergedAt: "2026-11-14T12:00:00Z" })).toBe("merged 2d ago");
-    expect(detail({ state: "merged", mergedAt: "2026-11-16T11:30:00Z" })).toBe("merged 30m ago");
-    expect(detail({ state: "closed" })).toBe("closed");
-    expect(detail(null)).toBe("Status unavailable");
+    expect(line(running)).toEqual(alone("3 of 19 checks running", "pending"));
+    expect(line({ state: "merged", mergedAt: "2026-11-15T14:00:00Z" })).toEqual(alone("Merged 22h ago", "merged"));
+    expect(line({ state: "merged", mergedAt: "2026-11-14T12:00:00Z" })).toEqual(alone("Merged 2d ago", "merged"));
+    expect(line({ state: "merged", mergedAt: "2026-11-16T11:30:00Z" })).toEqual(alone("Merged 30m ago", "merged"));
+    expect(line({ state: "merged", mergedAt: null })).toEqual(alone("Merged", "merged"));
+    expect(line({ state: "closed" })).toEqual(alone("Closed", "closed"));
+    expect(line(null)).toEqual(alone("Status unavailable", "unknown"));
   });
 
-  it("flags conflicts beside a different headline status", () => {
-    const rows = pullRequestCard(
-      [entry(1, { ...failing, mergeable: false }), entry(2, { mergeable: false }), entry(3, { state: "merged" })],
-      NOW,
-    ).rows;
-    expect(rows.map((row) => [row.ref, row.status, row.alsoConflicts])).toEqual([
-      ["#1", "checks_failed", true],
-      ["#2", "conflicts", false],
-      ["#3", "merged", false],
+  it("leads any other open status with its uncut label, then the checks, which may be cut", () => {
+    const line = (value: Parameters<typeof entry>[1]) => pullRequestCard([entry(1, value)], NOW).rows[0]!.statusLine;
+    const labelled = (label: string, tone: string, checks: string) => [
+      { text: label, tone, truncates: false },
+      { text: checks, tone: null, truncates: true },
+    ];
+    expect(line({})).toEqual(labelled("Ready to merge", "ready", "3 checks passed"));
+    expect(line({ checks: null })).toEqual(labelled("Ready to merge", "ready", "No checks"));
+    expect(line({ mergeable: false })).toEqual(labelled("Conflicts", "alert", "3 checks passed"));
+    expect(line({ review: "changes_requested" })).toEqual(labelled("Changes requested", "alert", "3 checks passed"));
+    expect(line({ review: "review_requested" })).toEqual(labelled("Awaiting review", "review", "3 checks passed"));
+    expect(line({ draft: true, ...failing })).toEqual(labelled("Draft", "draft", "PR Format / format failed"));
+  });
+
+  it("ends the line with conflicts beside a different status, and never on a finished PR", () => {
+    const line = (value: Parameters<typeof entry>[1]) =>
+      pullRequestCard([entry(1, value)], NOW).rows[0]!.statusLine.map(({ text, tone }) => [text, tone]);
+    const conflicts = ["conflicts", "alert"];
+    expect(line({ ...failing, mergeable: false })).toEqual([["PR Format / format failed", "alert"], conflicts]);
+    expect(line({ review: "review_requested", mergeable: false })).toEqual([
+      ["Conflicts", "alert"],
+      ["3 checks passed", null],
     ]);
+    expect(line({ ...running, review: "changes_requested", mergeable: false })).toEqual([
+      ["Conflicts", "alert"],
+      ["3 of 19 checks running", null],
+    ]);
+    expect(line({ draft: true, mergeable: false })).toEqual([["Draft", "draft"], ["3 checks passed", null], conflicts]);
+    expect(line({ state: "merged", mergedAt: null, mergeable: false })).toEqual([["Merged", "merged"]]);
   });
 });
 
