@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.16] - 2026-11-21
+
 ### Added
 
 - **Subthreads draw their pull request rail too.** A subthread row under an expanded parent now has the same thin rail under its title, one segment per pull request the subthread opened, coloured by status as on parent rows. There is no `merged/total` count on these rows, which have no room for it; the hover card lists the pull requests. Subthreads of a settled thread show no rail and are never polled, as with any settled row.
